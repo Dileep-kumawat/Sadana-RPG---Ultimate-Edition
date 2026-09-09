@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0b1020" />
+  <title>Sadhana RPG — Ultimate Edition</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="ambient ambient-a"></div>
+  <div class="ambient ambient-b"></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">ॐ</div>
+      <div>
+        <div class="brand-title">SADHANA RPG</div>
+        <div class="brand-sub">ULTIMATE EDITION</div>
+      </div>
+    </div>
+    <div class="top-actions">
+      <button class="icon-btn" id="soundBtn" title="Toggle sounds">🔊</button>
+      <button class="icon-btn" id="resetBtn" title="Reset all progress">↺</button>
+    </div>
+  </header>
+
+  <main class="shell">
+    <section class="hero-grid">
+      <div class="hero-card glass">
+        <div class="hero-kicker">YOUR DAILY ADVENTURE</div>
+        <h1 id="greeting">Welcome, Sadhaka.</h1>
+        <p>Show up. Earn XP. Build your streak. Defeat the week.</p>
+
+        <div class="level-row">
+          <div class="level-badge" id="levelNumber">LV 1</div>
+          <div class="level-copy">
+            <div class="level-title" id="levelTitle">Beginner</div>
+            <div class="level-xp"><span id="levelXP">0</span> / <span id="nextLevelXP">5,000</span> XP</div>
+            <div class="progress"><span id="levelProgress"></span></div>
+          </div>
+        </div>
+
+        <div class="stat-pills">
+          <div class="stat-pill"><span>🔥</span><b id="sadhanaStreak">0</b><small>Sadhana streak</small></div>
+          <div class="stat-pill"><span>🧘</span><b id="mantraStreak">0</b><small>Mantra streak</small></div>
+          <div class="stat-pill"><span>🏆</span><b id="lifetimeXP">0</b><small>Lifetime XP</small></div>
+        </div>
+      </div>
+
+      <div class="today-card glass">
+        <div class="section-label">TODAY'S POWER</div>
+        <div class="power-number"><span id="todayXP">0</span><small> XP</small></div>
+        <div class="progress big"><span id="todayProgress"></span></div>
+        <div class="today-meta">
+          <span id="todayTier">Start your run</span>
+          <span id="todayPercent">0%</span>
+        </div>
+        <div class="chest" id="chest">
+          <div class="chest-icon">🎁</div>
+          <div>
+            <b id="chestTitle">Daily Chest</b>
+            <small id="chestText">Reach 300 XP to unlock Bronze.</small>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="dashboard-grid">
+      <div class="panel quests-panel">
+        <div class="panel-head">
+          <div>
+            <div class="eyebrow">QUEST BOARD</div>
+            <h2>Daily Quests</h2>
+          </div>
+          <div class="combo" id="comboBadge">COMBO ×0</div>
+        </div>
+        <div class="quest-list" id="questList"></div>
+        <div class="combo-note" id="comboNote">Complete quests to build your combo.</div>
+      </div>
+
+      <aside class="panel boss-panel">
+        <div class="eyebrow">WEEKLY BOSS</div>
+        <div class="boss-header">
+          <div class="boss-avatar" id="bossAvatar">👹</div>
+          <div>
+            <h2 id="bossName">The Procrastination Demon</h2>
+            <p id="bossDesc">Earn 3,000 XP this week.</p>
+          </div>
+        </div>
+        <div class="boss-hp"><span id="bossHP"></span></div>
+        <div class="boss-stats">
+          <span><b id="bossCurrent">0</b> XP</span>
+          <span><b id="bossTarget">3,000</b> XP</span>
+        </div>
+        <div class="boss-objectives" id="bossObjectives"></div>
+        <button class="primary-btn" id="bossBtn">⚔️ View Boss</button>
+      </aside>
+    </section>
+
+    <section class="lower-grid">
+      <div class="panel achievements-panel">
+        <div class="panel-head">
+          <div>
+            <div class="eyebrow">COLLECTION</div>
+            <h2>Achievements</h2>
+          </div>
+          <span class="counter" id="achievementCount">0 / 0</span>
+        </div>
+        <div class="achievement-grid" id="achievementGrid"></div>
+      </div>
+
+      <div class="panel leaderboard-panel">
+        <div class="panel-head">
+          <div>
+            <div class="eyebrow">SELF VS SELF</div>
+            <h2>Weekly Leaderboard</h2>
+          </div>
+          <span class="mini-tag">YOU</span>
+        </div>
+        <div class="leaderboard" id="leaderboard"></div>
+        <div class="weekly-summary">
+          <div><small>This week</small><b id="weekXP">0 XP</b></div>
+          <div><small>Best week</small><b id="bestWeek">0 XP</b></div>
+          <div><small>Change</small><b id="weekChange">+0 XP</b></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel streak-panel">
+      <div class="panel-head">
+        <div>
+          <div class="eyebrow">STREAK ENGINE</div>
+          <h2>Consistency beats perfection.</h2>
+        </div>
+        <div class="streak-rule">500 XP = Sadhana day</div>
+      </div>
+      <div class="streak-track" id="streakTrack"></div>
+    </section>
+
+    <section class="rules glass">
+      <div class="rules-icon">⚔️</div>
+      <div>
+        <b>The Golden Rule</b>
+        <p>Never lose XP. A missed quest simply gives 0 XP for that quest. Your earned progress stays yours.</p>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast"></div>
+  <div class="modal-backdrop" id="modalBackdrop">
+    <div class="modal glass">
+      <button class="modal-close" id="modalClose">×</button>
+      <div class="modal-icon" id="modalIcon">🏆</div>
+      <h2 id="modalTitle">Achievement unlocked</h2>
+      <p id="modalText"></p>
+      <button class="primary-btn" id="modalOK">Continue</button>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
