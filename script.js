@@ -1,7 +1,7 @@
 const quests = [
-  {id:"mantra", icon:"🧘", name:"Mantra Meditation — 10 rounds", xp:200, type:"MAIN QUEST"},
+  {id:"mantra", icon:"🧘", name:"Mantra Meditation - 4 rounds", xp:200, type:"MAIN QUEST"},
   {id:"project", icon:"💻", name:"Project Work", xp:150, type:"CAREER QUEST"},
-  {id:"internship", icon:"📊", name:"BragSheet Internship", xp:150, type:"CAREER QUEST"},
+  {id:"internship", icon:"📊", name:"Micro Tools Development", xp:150, type:"CAREER QUEST"},
   {id:"dsa", icon:"🧠", name:"DSA", xp:120, type:"ACADEMIC QUEST"},
   {id:"class", icon:"📖", name:"Bhagavatnam Class", xp:100, type:"WISDOM QUEST"},
   {id:"exercise", icon:"🏃", name:"Exercises", xp:100, type:"HEALTH QUEST"},
