@@ -14,8 +14,8 @@ const quests = [
 const achievements = [
   {id:"first", icon:"🌱", title:"First Step", desc:"Complete your first quest.", test:s=>s.totalCompletions>=1},
   {id:"mantra1", icon:"🕉️", title:"First Mantra", desc:"Complete Mantra Meditation once.", test:s=>s.counts.mantra>=1},
-  {id:"mantra7", icon:"🔥", title:"7-Day Flame", desc:"Reach a 7-day Mantra streak.", test:s=>s.mantraStreak>=7},
-  {id:"mantra30", icon:"💎", title:"30-Day Sadhaka", desc:"Reach a 30-day Mantra streak.", test:s=>s.mantraStreak>=30},
+  {id:"mantra7", icon:"🔥", title:"7-Day Flame", desc:"Reach a 7-day Mantra streak.", test:s=>Math.max(s.mantraStreak||0,s.maxMantraStreak||0)>=7},
+  {id:"mantra30", icon:"💎", title:"30-Day Sadhaka", desc:"Reach a 30-day Mantra streak.", test:s=>Math.max(s.mantraStreak||0,s.maxMantraStreak||0)>=30},
   {id:"dsa10", icon:"📚", title:"Scholar", desc:"Complete DSA 10 times.", test:s=>s.counts.dsa>=10},
   {id:"dsa30", icon:"⚔️", title:"Problem Solver", desc:"Complete DSA 30 times.", test:s=>s.counts.dsa>=30},
   {id:"project10", icon:"🚀", title:"Builder", desc:"Complete Project Work 10 times.", test:s=>s.counts.project>=10},
@@ -25,10 +25,35 @@ const achievements = [
 ];
 
 const bosses = [
-  {name:"The Procrastination Demon", icon:"👹", target:3000, desc:"Earn 3,000 XP this week.", obj:["3,000 XP this week"]},
-  {name:"The Distraction Beast", icon:"👾", target:4000, desc:"Earn 4,000 XP + 7 Mantra sessions.", obj:["4,000 XP this week","7 Mantra sessions"]},
-  {name:"The Laziness Titan", icon:"🗿", target:5000, desc:"Earn 5,000 XP with a strong study/career week.", obj:["5,000 XP this week","4 Project sessions","3 DSA sessions"]},
-  {name:"The Chaos Dragon", icon:"🐉", target:6000, desc:"The ultimate weekly challenge.", obj:["6,000 XP this week","7 Mantra sessions","5 career/academic sessions"]}
+  {
+    name:"The Procrastination Demon", icon:"👹", target:3000, desc:"Earn 3,000 XP this week.",
+    obj:[
+      {label:"3,000 XP this week", check:xp=>xp>=3000, progress:xp=>`${Math.min(xp,3000).toLocaleString()}/3,000`}
+    ]
+  },
+  {
+    name:"The Distraction Beast", icon:"👾", target:4000, desc:"Earn 4,000 XP + 7 Mantra sessions.",
+    obj:[
+      {label:"4,000 XP this week", check:xp=>xp>=4000, progress:xp=>`${Math.min(xp,4000).toLocaleString()}/4,000`},
+      {label:"7 Mantra sessions", check:(_,c)=>(c.mantra||0)>=7, progress:(_,c)=>`${Math.min(c.mantra||0,7)}/7`}
+    ]
+  },
+  {
+    name:"The Laziness Titan", icon:"🗿", target:5000, desc:"Earn 5,000 XP with a strong study/career week.",
+    obj:[
+      {label:"5,000 XP this week", check:xp=>xp>=5000, progress:xp=>`${Math.min(xp,5000).toLocaleString()}/5,000`},
+      {label:"4 Project sessions", check:(_,c)=>(c.project||0)>=4, progress:(_,c)=>`${Math.min(c.project||0,4)}/4`},
+      {label:"3 DSA sessions", check:(_,c)=>(c.dsa||0)>=3, progress:(_,c)=>`${Math.min(c.dsa||0,3)}/3`}
+    ]
+  },
+  {
+    name:"The Chaos Dragon", icon:"🐉", target:6000, desc:"The ultimate weekly challenge.",
+    obj:[
+      {label:"6,000 XP this week", check:xp=>xp>=6000, progress:xp=>`${Math.min(xp,6000).toLocaleString()}/6,000`},
+      {label:"7 Mantra sessions", check:(_,c)=>(c.mantra||0)>=7, progress:(_,c)=>`${Math.min(c.mantra||0,7)}/7`},
+      {label:"5 career/academic sessions", check:(_,c)=>((c.project||0)+(c.internship||0)+(c.dsa||0)+(c.college||0))>=5, progress:(_,c)=>`${Math.min((c.project||0)+(c.internship||0)+(c.dsa||0)+(c.college||0),5)}/5`}
+    ]
+  }
 ];
 
 const titles = ["Beginner","Initiate","Disciplined","Focused","Consistent","Dedicated","Relentless","Elite","Master","Sadhana Legend"];
@@ -36,7 +61,8 @@ const STORAGE = "sadhana-rpg-ultimate-v1";
 
 const blankState = () => ({
   totalXP:0, totalCompletions:0, counts:Object.fromEntries(quests.map(q=>[q.id,0])),
-  days:{}, weeks:{}, mantraStreak:0, sadhanaStreak:0, lastDay:null, sound:true
+  days:{}, weeks:{}, mantraStreak:0, sadhanaStreak:0, maxMantraStreak:0, maxSadhanaStreak:0,
+  unlockedAchievements:[], defeatedBosses:{}, lastDay:null, sound:true
 });
 let state = load();
 
@@ -47,8 +73,37 @@ function weekKey(d=new Date()){
 }
 function todayData(){ const k=dateKey(); if(!state.days[k]) state.days[k]={done:[], xp:0}; return state.days[k]; }
 function currentWeekXP(){ return state.days ? Object.entries(state.days).filter(([k])=>k>=weekKey()).reduce((a,[,v])=>a+(v.xp||0),0):0; }
+function currentWeekCounts(){
+  const wk=weekKey(), counts={};
+  for(const [k,v] of Object.entries(state.days||{})){
+    if(k>=wk) for(const id of (v.done||[])) counts[id]=(counts[id]||0)+1;
+  }
+  return counts;
+}
+function computeMaxStreak(days, predicate){
+  const keys=Object.keys(days||{}).sort();
+  let best=0, cur=0, prev=null;
+  for(const k of keys){
+    if(!predicate(days[k])){ cur=0; prev=null; continue; }
+    if(prev){
+      const d=new Date(prev+"T00:00:00Z"); d.setUTCDate(d.getUTCDate()+1);
+      cur = d.toISOString().slice(0,10)===k ? cur+1 : 1;
+    } else cur=1;
+    prev=k; if(cur>best) best=cur;
+  }
+  return best;
+}
 function save(){ localStorage.setItem(STORAGE,JSON.stringify(state)); }
-function load(){ try{ return {...blankState(),...JSON.parse(localStorage.getItem(STORAGE)||"{}")}; }catch{return blankState()} }
+function load(){
+  try{
+    const s={...blankState(),...JSON.parse(localStorage.getItem(STORAGE)||"{}")};
+    s.unlockedAchievements=Array.isArray(s.unlockedAchievements)?s.unlockedAchievements:[];
+    s.defeatedBosses=s.defeatedBosses&&typeof s.defeatedBosses==="object"?s.defeatedBosses:{};
+    s.maxMantraStreak=Math.max(s.maxMantraStreak||0,s.mantraStreak||0,computeMaxStreak(s.days,d=>(d.done||[]).includes("mantra")));
+    s.maxSadhanaStreak=Math.max(s.maxSadhanaStreak||0,s.sadhanaStreak||0,computeMaxStreak(s.days,d=>(d.xp||0)>=500));
+    return s;
+  }catch{return blankState()}
+}
 
 function levelInfo(xp){
   const level=Math.floor(xp/5000)+1;
@@ -73,6 +128,41 @@ function streakBonus(type, streak){
   return map[streak]||0;
 }
 
+const chestTiers = [
+  {id:"bronze", min:300, bonus:50, icon:"🥉", name:"Bronze", tier:"🥉 BRONZE DAY"},
+  {id:"silver", min:500, bonus:100, icon:"🥈", name:"Silver", tier:"🥈 SILVER DAY"},
+  {id:"gold", min:700, bonus:150, icon:"🥇", name:"Gold", tier:"🥇 GOLD DAY"},
+  {id:"diamond", min:900, bonus:250, icon:"💎", name:"Diamond", tier:"💎 DIAMOND DAY"},
+  {id:"legendary", min:1120, bonus:400, icon:"👑", name:"Legendary", tier:"👑 LEGENDARY DAY"}
+];
+function getChestState(today){
+  const t=todayData();
+  const claimed=Array.isArray(t.claimedChests)?t.claimedChests:[];
+  const unlocked=chestTiers.filter(c=>today>=c.min);
+  const claimable=unlocked.filter(c=>!claimed.includes(c.id));
+  const next=chestTiers.find(c=>today<c.min);
+  const highest=unlocked[unlocked.length-1]||null;
+  return {t, claimed, unlocked, claimable, next, highest};
+}
+function claimDailyChest(){
+  const t=todayData(), done=t.done||[];
+  const today=done.reduce((a,id)=>a+(quests.find(q=>q.id===id)?.xp||0),0)+comboBonus(done.length)+sacredBonus(done);
+  const {claimable, next}=getChestState(today);
+  if(!claimable.length){
+    toast(next?`Reach ${next.min.toLocaleString()} XP to unlock ${next.name} Chest.`:"All daily chests claimed today!");
+    return;
+  }
+  if(!Array.isArray(t.claimedChests)) t.claimedChests=[];
+  const bonus=claimable.reduce((a,c)=>a+c.bonus,0);
+  claimable.forEach(c=>t.claimedChests.push(c.id));
+  state.totalXP += bonus;
+  const top=claimable[claimable.length-1];
+  spawnXP(bonus); beep();
+  openModal(top.icon,"Daily Chest Claimed!",`Unlocked ${claimable.map(c=>c.name).join(" + ")} Chest! +${bonus.toLocaleString()} Bonus XP added.`);
+  checkAchievements();
+  checkBossDefeat();
+  render();
+}
 function render(){
   const t=todayData(), done=t.done||[], baseXP=done.reduce((a,id)=>a+(quests.find(q=>q.id===id)?.xp||0),0);
   const combo=comboBonus(done.length), sacred=sacredBonus(done), today=baseXP+combo+sacred;
@@ -90,16 +180,28 @@ function render(){
   document.getElementById("comboBadge").textContent=`COMBO ×${Math.min(done.length,6)}`;
   document.getElementById("comboNote").textContent = sacred ? "🕉️ Sacred Combo active: +200 XP" : combo ? `⚡ Combo bonus active: +${combo} XP` : "Complete quests to build your combo.";
   document.getElementById("sadhanaStreak").textContent=state.sadhanaStreak||0;
+  document.getElementById("maxSadhanaStreak").textContent=state.maxSadhanaStreak||0;
   document.getElementById("mantraStreak").textContent=state.mantraStreak||0;
+  document.getElementById("maxMantraStreak").textContent=state.maxMantraStreak||0;
 
-  let tier="Start your run", chest="Reach 300 XP to unlock Bronze.";
-  if(today>=1120){tier="👑 LEGENDARY DAY";chest="Legendary Chest unlocked."}
-  else if(today>=900){tier="💎 DIAMOND DAY";chest="Diamond Chest unlocked."}
-  else if(today>=700){tier="🥇 GOLD DAY";chest="Gold Chest unlocked."}
-  else if(today>=500){tier="🥈 SILVER DAY";chest="Silver Chest unlocked."}
-  else if(today>=300){tier="🥉 BRONZE DAY";chest="Bronze Chest unlocked."}
-  document.getElementById("todayTier").textContent=tier;
-  document.getElementById("chestText").textContent=chest;
+  const {claimable, next, highest}=getChestState(today);
+  const chestEl=document.getElementById("chest");
+  const chestTitleEl=document.getElementById("chestTitle");
+  const chestTextEl=document.getElementById("chestText");
+  document.getElementById("todayTier").textContent=highest?highest.tier:"Start your run";
+  chestEl.classList.toggle("claimable",claimable.length>0);
+  chestEl.classList.toggle("claimed",Boolean(highest)&&claimable.length===0);
+  if(claimable.length>0){
+    const bonus=claimable.reduce((a,c)=>a+c.bonus,0);
+    chestTitleEl.textContent=`${claimable[claimable.length-1].name} Chest Ready!`;
+    chestTextEl.textContent=`Click to claim +${bonus} Bonus XP`;
+  } else if(highest){
+    chestTitleEl.textContent=`${highest.name} Chest Claimed ✅`;
+    chestTextEl.textContent=next?`Next: ${next.name} Chest at ${next.min.toLocaleString()} XP.`:"All daily chests claimed today!";
+  } else {
+    chestTitleEl.textContent="Daily Chest";
+    chestTextEl.textContent="Reach 300 XP to unlock Bronze.";
+  }
 
   renderQuests(done);
   renderAchievements();
@@ -132,6 +234,7 @@ function toggleQuest(id){
   spawnXP(delta); beep();
   toast(`+${delta} XP — ${q.name}`);
   checkAchievements();
+  checkBossDefeat();
   render();
 }
 
@@ -143,6 +246,7 @@ function updateMantraStreak(){
     if((state.days[k].done||[]).includes("mantra")){s++;cursor.setDate(cursor.getDate()-1)} else break;
   }
   const prev=state.mantraStreak||0; state.mantraStreak=s;
+  state.maxMantraStreak=Math.max(state.maxMantraStreak||0,s);
   if(s>prev){ const b=streakBonus("mantra",s); if(b){state.totalXP+=b; toast(`🔥 Mantra milestone: +${b.toLocaleString()} XP`);}}
 }
 function updateSadhanaStreak(){
@@ -152,37 +256,69 @@ function updateSadhanaStreak(){
     if((state.days[k].xp||0)>=500){s++;cursor.setDate(cursor.getDate()-1)} else break;
   }
   const prev=state.sadhanaStreak||0; state.sadhanaStreak=s;
+  state.maxSadhanaStreak=Math.max(state.maxSadhanaStreak||0,s);
   if(s>prev){ const b=streakBonus("sadhana",s); if(b){state.totalXP+=b; toast(`🔥 Sadhana streak ${s}: +${b.toLocaleString()} XP`);}}
 }
 
+function isAchievementUnlocked(a){
+  return (state.unlockedAchievements||[]).includes(a.id) || a.test(state);
+}
 function renderAchievements(){
-  const unlocked=achievements.filter(a=>a.test(state)).length;
+  const unlocked=achievements.filter(isAchievementUnlocked).length;
   document.getElementById("achievementCount").textContent=`${unlocked} / ${achievements.length}`;
   document.getElementById("achievementGrid").innerHTML=achievements.map(a=>`
-    <div class="achievement ${a.test(state)?"unlocked":"locked"}">
+    <div class="achievement ${isAchievementUnlocked(a)?"unlocked":"locked"}">
       <div class="medal">${a.icon}</div><b>${a.title}</b><small>${a.desc}</small>
     </div>`).join("");
 }
 let knownAchievements = new Set();
 function checkAchievements(){
+  if(!Array.isArray(state.unlockedAchievements)) state.unlockedAchievements=[];
   achievements.forEach(a=>{
-    if(a.test(state) && !knownAchievements.has(a.id)){
-      knownAchievements.add(a.id);
-      openModal(a.icon,`Achievement Unlocked`,a.title+" — "+a.desc);
+    if(isAchievementUnlocked(a)){
+      if(!state.unlockedAchievements.includes(a.id)) state.unlockedAchievements.push(a.id);
+      if(!knownAchievements.has(a.id)){
+        knownAchievements.add(a.id);
+        openModal(a.icon,`Achievement Unlocked`,a.title+" — "+a.desc);
+      }
     }
   });
 }
-function renderBoss(){
-  const weekXP=currentWeekXP();
+function getBossState(){
+  const weekXP=currentWeekXP(), wc=currentWeekCounts();
   const weekIndex=Math.floor(state.totalXP/5000)%bosses.length;
   const boss=bosses[weekIndex];
-  document.getElementById("bossAvatar").textContent=boss.icon;
+  const defeated=boss.obj.every(o=>o.check(weekXP,wc));
+  return {boss, weekXP, wc, defeated};
+}
+function checkBossDefeat(){
+  const {boss, defeated}=getBossState();
+  if(!defeated) return;
+  const key=`${weekKey()}:${boss.name}`;
+  if(!state.defeatedBosses) state.defeatedBosses={};
+  if(!state.defeatedBosses[key]){
+    state.defeatedBosses[key]=true;
+    openModal("🏆","Weekly Boss Defeated!",`You defeated ${boss.name}! All weekly objectives are complete.`);
+  }
+}
+function renderBoss(){
+  const {boss, weekXP, wc, defeated}=getBossState();
+  const panel=document.getElementById("bossPanel");
+  const badge=document.getElementById("bossBadge");
+  const btn=document.getElementById("bossBtn");
+  panel.classList.toggle("defeated",defeated);
+  badge.textContent=defeated?"✅ DEFEATED":"ACTIVE";
+  btn.textContent=defeated?"🏆 Boss Defeated!":"⚔️ View Boss";
+  document.getElementById("bossAvatar").textContent=defeated?"🏆":boss.icon;
   document.getElementById("bossName").textContent=boss.name;
-  document.getElementById("bossDesc").textContent=boss.desc;
+  document.getElementById("bossDesc").textContent=defeated?"Weekly boss defeated! Consistency wins.":boss.desc;
   document.getElementById("bossCurrent").textContent=weekXP.toLocaleString();
   document.getElementById("bossTarget").textContent=boss.target.toLocaleString();
   document.getElementById("bossHP").style.width=Math.min(100,weekXP/boss.target*100)+"%";
-  document.getElementById("bossObjectives").innerHTML=boss.obj.map(x=>`<div class="objective"><span>${x}</span><b>⚔️</b></div>`).join("");
+  document.getElementById("bossObjectives").innerHTML=boss.obj.map(o=>{
+    const ok=o.check(weekXP,wc);
+    return `<div class="objective ${ok?"done":""}"><span>${o.label}</span><b>${ok?"✅":o.progress(weekXP,wc)+" ⚔️"}</b></div>`;
+  }).join("");
 }
 function renderLeaderboard(){
   const thisWeek=currentWeekXP();
@@ -215,8 +351,18 @@ document.getElementById("soundBtn").onclick=()=>{state.sound=!state.sound;docume
 document.getElementById("resetBtn").onclick=()=>{
   if(confirm("Reset ALL Sadhana RPG progress? This cannot be undone.")){state=blankState();knownAchievements=new Set();save();render();toast("Fresh save created. New adventure begins!")}
 };
-document.getElementById("bossBtn").onclick=()=>openModal("👹","Weekly Boss Battle","Your boss is defeated by consistency, not perfection. Reach the target XP and complete the listed objectives.");
+document.getElementById("chest").onclick=claimDailyChest;
+document.getElementById("bossBtn").onclick=()=>{
+  const {boss, defeated}=getBossState();
+  if(defeated) openModal("🏆","Weekly Boss Defeated!",`You defeated ${boss.name} this week! Keep up the consistency.`);
+  else openModal(boss.icon,"Weekly Boss Battle","Your boss is defeated by consistency, not perfection. Reach the target XP and complete the listed objectives.");
+};
 document.getElementById("greeting").textContent = `Welcome, Sadhaka.`;
 document.getElementById("soundBtn").textContent=state.sound?"🔊":"🔇";
-achievements.forEach(a=>{if(a.test(state))knownAchievements.add(a.id)});
+achievements.forEach(a=>{
+  if(isAchievementUnlocked(a)){
+    if(!state.unlockedAchievements.includes(a.id)) state.unlockedAchievements.push(a.id);
+    knownAchievements.add(a.id);
+  }
+});
 render();
