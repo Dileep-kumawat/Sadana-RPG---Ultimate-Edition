@@ -75,6 +75,8 @@ const blankState = () => ({
   days:{}, weeks:{}, mantraStreak:0, sadhanaStreak:0, maxMantraStreak:0, maxSadhanaStreak:0,
   shields:0, shieldMilestones:[], shieldUsedDays:[], relics:[], theme:"void",
   quests:quests.map(q=>({...q})), anchorQuestId:"mantra",
+  restMode:false, restDays:[], nudgeEnabled:false, nudgeHour:21, lastNudgeDay:null,
+  cloudSync:{token:"", gistId:"", lastSync:null},
   unlockedAchievements:[], defeatedBosses:{}, lastDay:null, sound:true
 });
 let state = load();
@@ -127,6 +129,11 @@ function normalizeState(raw){
   s.theme=typeof s.theme==="string"?s.theme:"void";
   s.quests=Array.isArray(s.quests)&&s.quests.length?s.quests:quests.map(q=>({...q}));
   s.anchorQuestId=typeof s.anchorQuestId==="string"?s.anchorQuestId:"mantra";
+  s.restMode=Boolean(s.restMode);
+  s.restDays=Array.isArray(s.restDays)?s.restDays:[];
+  s.nudgeEnabled=Boolean(s.nudgeEnabled);
+  s.nudgeHour=Number(s.nudgeHour)||21;
+  s.cloudSync=s.cloudSync&&typeof s.cloudSync==="object"?{token:s.cloudSync.token||"",gistId:s.cloudSync.gistId||"",lastSync:s.cloudSync.lastSync||null}:{token:"",gistId:"",lastSync:null};
   s.counts=s.counts&&typeof s.counts==="object"?s.counts:{};
   s.quests.forEach(q=>{ if(typeof s.counts[q.id]!=="number") s.counts[q.id]=0; });
   s.maxMantraStreak=Math.max(s.maxMantraStreak||0,s.mantraStreak||0,computeMaxStreak(s.days,d=>(d.done||[]).includes(s.anchorQuestId||"mantra")));
@@ -194,10 +201,11 @@ function claimDailyChest(){
   }
   if(!Array.isArray(t.claimedChests)) t.claimedChests=[];
   const bonus=claimable.reduce((a,c)=>a+c.bonus,0);
+  const prevLvl=levelInfo(state.totalXP).level;
   claimable.forEach(c=>t.claimedChests.push(c.id));
   state.totalXP += bonus;
   const top=claimable[claimable.length-1];
-  spawnXP(bonus); beep();
+  spawnXP(bonus); playSound(levelInfo(state.totalXP).level>prevLvl?"level":"chest");
   openModal(top.icon,"Daily Chest Claimed!",`Unlocked ${claimable.map(c=>c.name).join(" + ")} Chest! +${bonus.toLocaleString()} Bonus XP added.`);
   checkAchievements();
   checkBossDefeat();
@@ -205,6 +213,8 @@ function claimDailyChest(){
 }
 function render(){
   const t=todayData(), done=t.done||[], baseXP=done.reduce((a,id)=>a+(findQuest(id)?.xp||0),0);
+  if(state.restMode && !state.restDays.includes(dateKey())) state.restDays.push(dateKey());
+  document.getElementById("restBanner").hidden=!state.restMode;
   const combo=comboBonus(done.length), sacred=sacredBonus(done), today=baseXP+combo+sacred;
   const lvl=levelInfo(state.totalXP);
 
@@ -289,19 +299,22 @@ function toggleQuest(id){
     state.counts[id]=Math.max(0,(state.counts[id]||0)-1);
     if(id===state.anchorQuestId) updateMantraStreak(false);
     updateSadhanaStreak(false);
+    playSound("undo");
     toast(`Quest undone (-${delta} XP). Past days remain safe.`);
     render();
     return;
   }
   const q=findQuest(id); if(!q) return; done.push(id);
-  const oldBase=t.xp||0;
+  const oldBase=t.xp||0, prevLvl=levelInfo(state.totalXP).level;
   t.done=done; t.xp=done.reduce((a,x)=>a+(findQuest(x)?.xp||0),0)+comboBonus(done.length)+sacredBonus(done);
   const delta=t.xp-oldBase;
   state.totalXP += delta; state.totalCompletions++; state.counts[id]=(state.counts[id]||0)+1;
   if(id===state.anchorQuestId) updateMantraStreak();
   updateSadhanaStreak();
-  spawnXP(delta); beep();
-  toast(`+${delta} XP — ${q.name}`);
+  spawnXP(delta);
+  const leveledUp=levelInfo(state.totalXP).level>prevLvl;
+  playSound(leveledUp?"level":"quest");
+  toast(leveledUp?`Level Up! LV ${levelInfo(state.totalXP).level}`:`+${delta} XP — ${q.name}`);
   checkAchievements();
   checkBossDefeat();
   render();
@@ -313,7 +326,13 @@ function calcStreak(predicate, allowShield=true){
   let s=0;
   while(true){
     const k=localDateStr(cur);
-    if(predicate(state.days[k]||{}) || state.shieldUsedDays.includes(k)){
+    if(predicate(state.days[k]||{})){
+      s++; cur.setDate(cur.getDate()-1); continue;
+    }
+    if(state.restDays.includes(k)){
+      cur.setDate(cur.getDate()-1); continue;
+    }
+    if(state.shieldUsedDays.includes(k)){
       s++; cur.setDate(cur.getDate()-1); continue;
     }
     if(allowShield && k<todayK && state.shields>0){
@@ -394,6 +413,7 @@ function checkBossDefeat(){
   if(boss.relic && !state.relics.includes(boss.relic.id)) state.relics.push(boss.relic.id);
   if(!state.defeatedBosses[key]){
     state.defeatedBosses[key]=true;
+    playSound("boss");
     openModal("🏆","Weekly Boss Defeated!",`You defeated ${boss.name}! Relic unlocked: ${boss.relic.icon} ${boss.relic.name}.`);
   }
 }
@@ -420,13 +440,41 @@ function renderBoss(){
     return `<span class="relic-pill ${has?"":"locked"}" title="${has?"Unlocked":"Defeat "+b.name}">${b.relic.icon} ${b.relic.name}</span>`;
   }).join("");
 }
+let insightTab="weekly";
 function renderLeaderboard(){
+  document.getElementById("insightsTitle").textContent=insightTab==="monthly"?"Monthly Insights":"Weekly Leaderboard";
+  document.querySelectorAll("#insightTabs .seg-btn").forEach(b=>b.classList.toggle("active",b.dataset.tab===insightTab));
+  if(insightTab==="monthly"){
+    const mPrefix=dateKey().slice(0,7);
+    const mDays=Object.entries(state.days||{}).filter(([k])=>k.startsWith(mPrefix));
+    const totalMonthXP=mDays.reduce((a,[,v])=>a+(v.xp||0),0);
+    const sadhanaDays=mDays.filter(([,v])=>(v.xp||0)>=500).length;
+    const activeDays=mDays.filter(([,v])=>(v.xp||0)>0).length;
+    const avgXP=activeDays?Math.round(totalMonthXP/activeDays):0;
+    const qCounts={};
+    mDays.forEach(([,v])=>(v.done||[]).forEach(id=>qCounts[id]=(qCounts[id]||0)+1));
+    const topQ=Object.entries(qCounts).sort((a,b)=>b[1]-a[1]).slice(0,3);
+    document.getElementById("leaderboard").innerHTML=topQ.length?topQ.map(([id,cnt],i)=>{
+      const q=findQuest(id)||{icon:"✨",name:id};
+      return `<div class="rank ${i===0?"current":""}"><div class="place">${["🥇","🥈","🥉"][i]}</div><div><b>${q.icon} ${q.name}</b><small>Most consistent this month</small></div><div class="score">${cnt}×</div></div>`;
+    }).join(""):`<div class="rank"><div class="place">📅</div><div><b>No activity yet this month</b><small>Complete quests to see top habits</small></div><div class="score">0×</div></div>`;
+    document.getElementById("sumLbl1").textContent="Month XP";
+    document.getElementById("sumLbl2").textContent="Sadhana days";
+    document.getElementById("sumLbl3").textContent="Avg / day";
+    document.getElementById("weekXP").textContent=totalMonthXP.toLocaleString()+" XP";
+    document.getElementById("bestWeek").textContent=`${sadhanaDays} days`;
+    document.getElementById("weekChange").textContent=avgXP.toLocaleString()+" XP";
+    return;
+  }
   const thisWeek=currentWeekXP();
   const previous=Object.entries(state.days).filter(([k])=>k>=weekKey(new Date(Date.now()-7*86400000)) && k<weekKey()).reduce((a,[,v])=>a+(v.xp||0),0);
   const allWeeks={...state.weeks}; allWeeks[weekKey()]=thisWeek;
   const best=Math.max(0,...Object.values(allWeeks));
   const rows=[{name:"This Week",xp:thisWeek,current:true},{name:"Best Week",xp:best},{name:"Last Week",xp:previous}].sort((a,b)=>b.xp-a.xp);
   document.getElementById("leaderboard").innerHTML=rows.map((r,i)=>`<div class="rank ${r.current?"current":""}"><div class="place">${["🥇","🥈","🥉"][i]||"🏅"}</div><div><b>${r.name}</b><small>${r.current?"Your current run":"Your previous record"}</small></div><div class="score">${r.xp.toLocaleString()} XP</div></div>`).join("");
+  document.getElementById("sumLbl1").textContent="This week";
+  document.getElementById("sumLbl2").textContent="Best week";
+  document.getElementById("sumLbl3").textContent="Change";
   document.getElementById("weekXP").textContent=thisWeek.toLocaleString()+" XP";
   document.getElementById("bestWeek").textContent=best.toLocaleString()+" XP";
   document.getElementById("weekChange").textContent=(thisWeek-previous>=0?"+":"")+((thisWeek-previous).toLocaleString())+" XP";
@@ -435,14 +483,16 @@ function openDayModal(k){
   const d=state.days[k]||{};
   const xp=d.xp||0;
   const shielded=state.shieldUsedDays.includes(k);
+  const isRest=state.restDays.includes(k);
   const doneNames=(d.done||[]).map(id=>findQuest(id)).filter(Boolean).map(q=>`${q.icon} ${q.name}`);
+  const statusNote=shielded?" · Protected by Shield":isRest?" · Rest / Travel Day":"";
   const rows=[
-    `<div class="day-chip"><b>XP Earned:</b> ${xp.toLocaleString()} XP${shielded?" · 🛡️ Protected by Streak Shield":""}</div>`,
+    `<div class="day-chip"><b>XP Earned:</b> ${xp.toLocaleString()} XP${statusNote}</div>`,
     d.sankalpa?`<div class="day-chip"><b>🕉️ Sankalpa:</b> ${d.sankalpa.replace(/</g,"&lt;")}</div>`:"",
     d.reflection?`<div class="day-chip"><b>✍️ Reflection:</b> ${d.reflection.replace(/</g,"&lt;")}</div>`:"",
     `<div class="day-chip"><b>Completed Quests (${doneNames.length}):</b><br>${doneNames.length?doneNames.join("<br>"):"None recorded"}</div>`
   ].filter(Boolean).join("");
-  openModal("📅",k,xp>=500?"Sadhana Day achieved!":"Activity summary",`<div class="day-summary">${rows}</div>`);
+  openModal("📅",k,xp>=500?"Sadhana Day achieved!":isRest?"Rest / Travel Day":"Activity summary",`<div class="day-summary">${rows}</div>`);
 }
 function renderStreak(){
   const el=document.getElementById("streakTrack"), base=effectiveDate(); base.setDate(base.getDate()-27);
@@ -451,15 +501,40 @@ function renderStreak(){
     const d=new Date(base);d.setDate(base.getDate()+i);const k=localDateStr(d);
     const xp=state.days[k]?.xp||0;
     const shielded=state.shieldUsedDays.includes(k);
-    const cls=xp>=900?"legend":xp>=500?"active":xp>0?"partial":shielded?"shielded":"";
+    const isRest=state.restDays.includes(k);
+    const cls=xp>=900?"legend":xp>=500?"active":xp>0?"partial":shielded?"shielded":isRest?"rest":"";
     const today=k===todayK;
-    return `<div class="day-dot ${cls} ${today?"today":""}" data-day="${k}" title="${k}: ${xp} XP"><div class="dot">${shielded?"🛡️":""}</div><small>${d.getDate()}</small></div>`;
+    return `<div class="day-dot ${cls} ${today?"today":""}" data-day="${k}" title="${k}: ${xp} XP"><div class="dot">${shielded?"🛡️":isRest?"⏸":""}</div><small>${d.getDate()}</small></div>`;
   }).join("");
   el.querySelectorAll(".day-dot").forEach(dot=>dot.addEventListener("click",()=>openDayModal(dot.dataset.day)));
 }
 function toast(msg){const el=document.getElementById("toast");el.textContent=msg;el.classList.add("show");clearTimeout(window.toastT);window.toastT=setTimeout(()=>el.classList.remove("show"),2200)}
 function spawnXP(n){const e=document.createElement("div");e.className="spark";e.textContent=`+${n} XP`;e.style.left=(window.innerWidth/2+Math.random()*80-40)+"px";e.style.top=(window.innerHeight/2+Math.random()*40-20)+"px";document.body.appendChild(e);setTimeout(()=>e.remove(),900)}
-function beep(){if(!state.sound)return;try{const c=new (window.AudioContext||window.webkitAudioContext)(),o=c.createOscillator(),g=c.createGain();o.frequency.value=660;g.gain.value=.035;o.connect(g);g.connect(c.destination);o.start();o.stop(c.currentTime+.08)}catch{}}
+let audioCtx=null;
+function playSound(type="quest"){
+  if(!state.sound) return;
+  try{
+    audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)();
+    if(audioCtx.state==="suspended") audioCtx.resume();
+    const seq={
+      quest:[[523,.06,0],[659,.09,.06]],
+      undo:[[440,.06,0],[349,.08,.06]],
+      chest:[[523,.07,0],[659,.07,.07],[784,.08,.14],[1046,.14,.21]],
+      level:[[523,.08,0],[659,.08,.08],[784,.08,.16],[1046,.2,.24]],
+      boss:[[392,.1,0],[523,.1,0.09],[659,.1,0.18],[784,.22,0.27]]
+    }[type]||[[660,.08,0]];
+    seq.forEach(([freq,dur,delay])=>{
+      const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+      o.type="triangle"; o.frequency.value=freq;
+      const t0=audioCtx.currentTime+delay;
+      g.gain.setValueAtTime(0.001,t0);
+      g.gain.exponentialRampToValueAtTime(0.045,t0+0.015);
+      g.gain.exponentialRampToValueAtTime(0.001,t0+dur);
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(t0); o.stop(t0+dur+0.02);
+    });
+  }catch{}
+}
 const ICONS = {
   settings:'<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
   palette:'<circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>',
@@ -471,7 +546,12 @@ const ICONS = {
   reset:'<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>',
   edit:'<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>',
   trash:'<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
-  lock:'<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>'
+  lock:'<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  chevUp:'<polyline points="18 15 12 9 6 15"/>',
+  chevDown:'<polyline points="6 9 12 15 18 9"/>',
+  cloud:'<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>',
+  moon:'<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>',
+  bell:'<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>'
 };
 function ico(name,size=16){
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]||""}</svg>`;
@@ -513,14 +593,39 @@ function openSettingsModal(){
       <div><label for="anchorSelect">Anchor Streak Quest</label><small>Protected from accidental delete</small></div>
       <select id="anchorSelect">${options}</select>
     </div>
-    <button class="setting-btn" id="settingsQuestsBtn"><span>Manage Quests (Add / Edit)</span><span class="setting-val">${ico("list",16)}</span></button>
+    <button class="setting-btn" id="settingsQuestsBtn"><span>Manage Quests (Reorder / Add / Edit)</span><span class="setting-val">${ico("list",16)}</span></button>
+    <button class="setting-btn" id="settingsRestBtn"><span>Rest / Travel Mode</span><span class="setting-val">${ico("moon",16)} ${state.restMode?"On":"Off"}</span></button>
+    <div class="setting-row">
+      <div><label for="nudgeSelect">Evening Streak Nudge</label><small>Remind before 2:00 AM cutoff</small></div>
+      <select id="nudgeSelect">
+        <option value="off" ${!state.nudgeEnabled?"selected":""}>Off</option>
+        ${[20,21,22,23].map(h=>`<option value="${h}" ${state.nudgeEnabled&&state.nudgeHour===h?"selected":""}>${h>12?`${h-12}:00 PM`:`${h}:00`}</option>`).join("")}
+      </select>
+    </div>
+    <button class="setting-btn" id="settingsCloudBtn"><span>Cloud Sync (GitHub Gist)</span><span class="setting-val">${ico("cloud",16)}</span></button>
     <button class="setting-btn" id="settingsSoundBtn"><span>Sound Effects</span><span class="setting-val">${ico(state.sound?"volOn":"volOff",16)} ${state.sound?"On":"Off"}</span></button>
     <button class="setting-btn" id="settingsExportBtn"><span>Export Backup (JSON)</span><span class="setting-val">${ico("download",16)}</span></button>
     <button class="setting-btn" id="settingsImportBtn"><span>Import Backup (JSON)</span><span class="setting-val">${ico("upload",16)}</span></button>
     <button class="setting-btn danger" id="settingsResetBtn"><span>Reset All Progress</span><span>${ico("reset",16)}</span></button>
   </div>`;
-  openModal(ico("settings",36),"Settings","Manage your quests, anchor streak, sound, and save data.",html);
+  openModal(ico("settings",36),"Settings","Manage your quests, streaks, cloud sync, and backups.",html);
   document.getElementById("settingsQuestsBtn").onclick=()=>{editingQuestId=null;openQuestsModal();};
+  document.getElementById("settingsRestBtn").onclick=()=>{
+    state.restMode=!state.restMode;
+    if(state.restMode && !state.restDays.includes(dateKey())) state.restDays.push(dateKey());
+    save(); render(); openSettingsModal();
+    toast(state.restMode?"Rest Mode enabled — streaks paused.":"Rest Mode disabled.");
+  };
+  document.getElementById("nudgeSelect").onchange=async e=>{
+    const val=e.target.value;
+    if(val==="off"){ state.nudgeEnabled=false; save(); toast("Evening nudge off."); return; }
+    state.nudgeEnabled=true; state.nudgeHour=Number(val);
+    if("Notification" in window && Notification.permission==="default"){
+      try{ await Notification.requestPermission(); }catch{}
+    }
+    save(); toast(`Evening nudge set for ${state.nudgeHour>12?state.nudgeHour-12:state.nudgeHour}:00 PM.`);
+  };
+  document.getElementById("settingsCloudBtn").onclick=openCloudSyncModal;
   document.getElementById("anchorSelect").onchange=e=>{
     state.anchorQuestId=e.target.value;
     updateMantraStreak(false);
@@ -545,15 +650,84 @@ function openSettingsModal(){
     }
   };
 }
+function openCloudSyncModal(){
+  const cs=state.cloudSync||{token:"",gistId:"",lastSync:null};
+  const lastText=cs.lastSync?`Last synced: ${new Date(cs.lastSync).toLocaleString()}`:"Not synced yet.";
+  const html=`<div class="cloud-form">
+    <input id="csToken" type="password" value="${(cs.token||"").replace(/"/g,"&quot;")}" placeholder="GitHub Personal Access Token (gist scope)" />
+    <input id="csGist" type="text" value="${(cs.gistId||"").replace(/"/g,"&quot;")}" placeholder="Gist ID (leave blank to auto-create)" />
+    <div class="cloud-actions">
+      <button class="primary-btn" id="csPushBtn" type="button">Push to Cloud</button>
+      <button class="setting-btn" id="csPullBtn" type="button" style="justify-content:center">Pull from Cloud</button>
+    </div>
+  </div>`;
+  openModal(ico("cloud",36),"Cloud Sync",lastText,html);
+  const saveInputs=()=>{
+    state.cloudSync.token=document.getElementById("csToken").value.trim();
+    state.cloudSync.gistId=document.getElementById("csGist").value.trim();
+    save();
+  };
+  document.getElementById("csPushBtn").onclick=async ()=>{
+    saveInputs();
+    if(!state.cloudSync.token){ toast("Enter your GitHub token first."); return; }
+    try{
+      const payload={...state, cloudSync:{...state.cloudSync, token:""}};
+      const body={description:"Sadhana RPG Save Backup", public:false, files:{"sadhana-rpg-backup.json":{content:JSON.stringify(payload,null,2)}}};
+      const url=state.cloudSync.gistId?`https://api.github.com/gists/${state.cloudSync.gistId}`:"https://api.github.com/gists";
+      const res=await fetch(url,{
+        method:state.cloudSync.gistId?"PATCH":"POST",
+        headers:{Authorization:`Bearer ${state.cloudSync.token}`,Accept:"application/vnd.github+json","Content-Type":"application/json"},
+        body:JSON.stringify(body)
+      });
+      if(!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data=await res.json();
+      state.cloudSync.gistId=data.id;
+      state.cloudSync.lastSync=Date.now();
+      save(); openCloudSyncModal();
+      toast("Synced to GitHub Gist!");
+    }catch(err){ toast(`Sync failed (${err.message}).`); }
+  };
+  document.getElementById("csPullBtn").onclick=async ()=>{
+    saveInputs();
+    if(!state.cloudSync.gistId){ toast("Enter a Gist ID to pull from."); return; }
+    try{
+      const headers={Accept:"application/vnd.github+json"};
+      if(state.cloudSync.token) headers.Authorization=`Bearer ${state.cloudSync.token}`;
+      const res=await fetch(`https://api.github.com/gists/${state.cloudSync.gistId}`,{headers});
+      if(!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data=await res.json();
+      const raw=data.files?.["sadhana-rpg-backup.json"]?.content;
+      if(!raw) throw new Error("Backup file missing");
+      const parsed=JSON.parse(raw);
+      if(!parsed || typeof parsed.days!=="object") throw new Error("Invalid data");
+      const keptSync={...state.cloudSync, lastSync:Date.now()};
+      state=normalizeState(parsed);
+      state.cloudSync=keptSync;
+      knownAchievements=new Set();
+      achievements.forEach(a=>{
+        if(isAchievementUnlocked(a)){
+          if(!state.unlockedAchievements.includes(a.id)) state.unlockedAchievements.push(a.id);
+          knownAchievements.add(a.id);
+        }
+      });
+      updateMantraStreak(false); updateSadhanaStreak(false);
+      save(); closeModal(); render();
+      toast("Restored from Cloud!");
+    }catch(err){ toast(`Pull failed (${err.message}).`); }
+  };
+}
 let editingQuestId=null;
 function openQuestsModal(){
   const types=["MAIN QUEST","SPIRITUAL QUEST","CAREER QUEST","ACADEMIC QUEST","HEALTH QUEST","WISDOM QUEST","BALANCE QUEST","CUSTOM QUEST"];
   const eq=editingQuestId?findQuest(editingQuestId):null;
-  const listHtml=getQuests().map(q=>{
+  const active=getQuests();
+  const listHtml=active.map((q,idx)=>{
     const isAnchor=q.id===state.anchorQuestId;
     return `<div class="quest-mgr-item">
       <div><b>${q.icon} ${q.name}</b><small>+${q.xp} XP · ${q.type}${isAnchor?" · Anchor":""}</small></div>
       <div class="quest-mgr-actions">
+        <button class="icon-mini" data-move="${q.id}:-1" title="Move up" ${idx===0?"disabled style='opacity:.3'":""}>${ico("chevUp",14)}</button>
+        <button class="icon-mini" data-move="${q.id}:1" title="Move down" ${idx===active.length-1?"disabled style='opacity:.3'":""}>${ico("chevDown",14)}</button>
         <button class="icon-mini" data-edit="${q.id}" title="Edit">${ico("edit",14)}</button>
         ${isAnchor?`<span class="icon-mini" title="Anchor quest protected">${ico("lock",14)}</span>`:`<button class="icon-mini" data-del="${q.id}" title="Remove">${ico("trash",14)}</button>`}
       </div>
@@ -589,6 +763,16 @@ function openQuestsModal(){
     }
     save(); render(); openQuestsModal();
   };
+  document.querySelectorAll("[data-move]").forEach(b=>b.onclick=()=>{
+    const [id,dirStr]=b.dataset.move.split(":"), dir=Number(dirStr);
+    const activeIds=getQuests().map(q=>q.id);
+    const pos=activeIds.indexOf(id), swapPos=pos+dir;
+    if(swapPos<0 || swapPos>=activeIds.length) return;
+    const i1=state.quests.findIndex(q=>q.id===activeIds[pos]);
+    const i2=state.quests.findIndex(q=>q.id===activeIds[swapPos]);
+    [state.quests[i1],state.quests[i2]]=[state.quests[i2],state.quests[i1]];
+    save(); render(); openQuestsModal();
+  });
   document.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>{editingQuestId=b.dataset.edit; openQuestsModal();});
   document.querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>{
     const q=findQuest(b.dataset.del);
@@ -637,6 +821,21 @@ document.getElementById("bossBtn").onclick=()=>{
   if(defeated) openModal("🏆","Weekly Boss Defeated!",`You defeated ${boss.name} this week! Keep up the consistency.`);
   else openModal(boss.icon,"Weekly Boss Battle","Your boss is defeated by consistency, not perfection. Reach the target XP and complete the listed objectives.");
 };
+document.querySelectorAll("#insightTabs .seg-btn").forEach(b=>b.onclick=()=>{insightTab=b.dataset.tab;renderLeaderboard();});
+function checkEveningNudge(){
+  if(!state.nudgeEnabled || state.restMode) return;
+  const now=new Date(), hr=now.getHours(), tk=dateKey();
+  if(hr<state.nudgeHour || hr<2 || state.lastNudgeDay===tk) return;
+  const t=todayData(), done=t.done||[];
+  const needsSadhana=(t.xp||0)<500;
+  const needsAnchor=state.anchorQuestId && !done.includes(state.anchorQuestId);
+  if(!needsSadhana && !needsAnchor) return;
+  state.lastNudgeDay=tk; save();
+  const msg="Your daily Sadhana streak is waiting! Complete your quests before 2:00 AM.";
+  if("Notification" in window && Notification.permission==="granted"){
+    try{ new Notification("Sadhana RPG",{body:msg,icon:"./android-chrome-192x192.png"}); }catch{ toast(msg); }
+  } else toast(msg);
+}
 document.getElementById("greeting").textContent = `Welcome, Sadhaka.`;
 updateMantraStreak(false);
 updateSadhanaStreak(false);
@@ -647,4 +846,6 @@ achievements.forEach(a=>{
   }
 });
 render();
+checkEveningNudge();
+setInterval(checkEveningNudge,60000);
 if("serviceWorker" in navigator){ navigator.serviceWorker.register("./sw.js").catch(()=>{}); }

@@ -21,7 +21,7 @@
   <!-- Theme -->
   <meta name="theme-color" content="#0b1020">
 
-  <link rel="stylesheet" href="style.css?v=4" />
+  <link rel="stylesheet" href="style.css?v=5" />
 </head>
 
 <body>
@@ -51,6 +51,7 @@
     <section class="hero-grid">
       <div class="hero-card glass">
         <div class="hero-kicker">YOUR DAILY ADVENTURE</div>
+        <div class="rest-banner" id="restBanner" hidden>Rest / Travel Mode active — Streaks paused</div>
         <h1 id="greeting">Welcome, Sadhaka.</h1>
         <p>Show up. Earn XP. Build your streak. Defeat the week.</p>
 
@@ -151,15 +152,18 @@
         <div class="panel-head">
           <div>
             <div class="eyebrow">SELF VS SELF</div>
-            <h2>Weekly Leaderboard</h2>
+            <h2 id="insightsTitle">Weekly Leaderboard</h2>
           </div>
-          <span class="mini-tag">YOU</span>
+          <div class="seg-tabs" id="insightTabs">
+            <button class="seg-btn active" data-tab="weekly">Weekly</button>
+            <button class="seg-btn" data-tab="monthly">Monthly</button>
+          </div>
         </div>
         <div class="leaderboard" id="leaderboard"></div>
         <div class="weekly-summary">
-          <div><small>This week</small><b id="weekXP">0 XP</b></div>
-          <div><small>Best week</small><b id="bestWeek">0 XP</b></div>
-          <div><small>Change</small><b id="weekChange">+0 XP</b></div>
+          <div><small id="sumLbl1">This week</small><b id="weekXP">0 XP</b></div>
+          <div><small id="sumLbl2">Best week</small><b id="bestWeek">0 XP</b></div>
+          <div><small id="sumLbl3">Change</small><b id="weekChange">+0 XP</b></div>
         </div>
       </div>
     </section>
@@ -196,7 +200,7 @@
     </div>
   </div>
 
-  <script src="script.js?v=4"></script>
+  <script src="script.js?v=5"></script>
 </body>
 
 </html>
