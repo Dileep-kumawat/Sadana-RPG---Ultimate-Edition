@@ -1,6 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
 
 :root{
+  color-scheme:dark;
   --bg:#070a14;
   --panel:rgba(17,22,42,.78);
   --panel-2:rgba(22,28,52,.88);
@@ -14,18 +15,6 @@
   --red:#fb7185;
   --shadow:0 24px 70px rgba(0,0,0,.35);
 }
-body[data-theme="saffron"]{
-  --bg:#130b07;--purple:#f59e0b;--cyan:#ffd166;
-  background:radial-gradient(circle at 15% 0%,rgba(245,158,11,.2),transparent 32rem),radial-gradient(circle at 90% 10%,rgba(251,191,36,.12),transparent 28rem),var(--bg);
-}
-body[data-theme="emerald"]{
-  --bg:#06120e;--purple:#10b981;--cyan:#67e8f9;
-  background:radial-gradient(circle at 15% 0%,rgba(16,185,129,.2),transparent 32rem),radial-gradient(circle at 90% 10%,rgba(103,232,249,.12),transparent 28rem),var(--bg);
-}
-body[data-theme="tapasya"]{
-  --bg:#14070e;--purple:#ec4899;--cyan:#fbbf24;
-  background:radial-gradient(circle at 15% 0%,rgba(236,72,153,.2),transparent 32rem),radial-gradient(circle at 90% 10%,rgba(251,191,36,.12),transparent 28rem),var(--bg);
-}
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
 body{
@@ -34,6 +23,18 @@ body{
   radial-gradient(circle at 90% 10%,rgba(34,211,238,.12),transparent 28rem),
   var(--bg);
   font-family:"DM Sans",system-ui,sans-serif; min-height:100vh;
+}
+body[data-theme="saffron"]{
+  --bg:#130b07;--purple:#f59e0b;--cyan:#ffd166;
+  background:radial-gradient(circle at 15% 0%,rgba(245,158,11,.22),transparent 32rem),radial-gradient(circle at 90% 10%,rgba(251,191,36,.12),transparent 28rem),var(--bg);
+}
+body[data-theme="emerald"]{
+  --bg:#06120e;--purple:#10b981;--cyan:#67e8f9;
+  background:radial-gradient(circle at 15% 0%,rgba(16,185,129,.22),transparent 32rem),radial-gradient(circle at 90% 10%,rgba(103,232,249,.12),transparent 28rem),var(--bg);
+}
+body[data-theme="tapasya"]{
+  --bg:#14070e;--purple:#ec4899;--cyan:#fbbf24;
+  background:radial-gradient(circle at 15% 0%,rgba(236,72,153,.22),transparent 32rem),radial-gradient(circle at 90% 10%,rgba(251,191,36,.12),transparent 28rem),var(--bg);
 }
 body:before{
   content:""; position:fixed; inset:0; pointer-events:none; opacity:.25;
@@ -58,8 +59,8 @@ body:before{
 .hero-card{padding:34px;overflow:hidden;position:relative}.hero-card:after{content:"";position:absolute;width:280px;height:280px;right:-100px;top:-120px;border-radius:50%;border:1px solid rgba(167,139,250,.15);box-shadow:0 0 100px rgba(167,139,250,.12)}
 .hero-kicker,.eyebrow,.section-label{font-size:10px;font-weight:700;letter-spacing:.22em;color:var(--purple)}
 h1,h2{font-family:"Space Grotesk",sans-serif;margin:0}.hero-card h1{font-size:clamp(30px,5vw,52px);margin:10px 0 8px;letter-spacing:-.04em}.hero-card p{color:var(--muted);margin:0 0 18px;font-size:15px}
-.sankalpa-box{display:flex;align-items:center;gap:10px;padding:9px 13px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.035);margin-bottom:22px}.sankalpa-box input,.reflection-box input{width:100%;border:0;background:none;color:var(--text);font:500 12px "DM Sans",sans-serif;outline:none}.sankalpa-box input::placeholder,.reflection-box input::placeholder{color:var(--muted)}
-.reflection-box{margin-top:10px;padding:9px 12px;border:1px solid var(--line);border-radius:13px;background:rgba(255,255,255,.03)}
+.sankalpa-box{display:flex;align-items:center;gap:10px;padding:10px 14px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.03);margin-bottom:22px;transition:.2s}.sankalpa-box:focus-within,.reflection-box:focus-within{border-color:rgba(167,139,250,.45);background:rgba(255,255,255,.05)}.sankalpa-box input,.reflection-box input{width:100%;border:0;background:transparent;-webkit-appearance:none;appearance:none;color:var(--text);font:500 12px "DM Sans",sans-serif;outline:none}.sankalpa-box input::placeholder,.reflection-box input::placeholder{color:var(--muted)}
+.reflection-box{margin-top:10px;padding:10px 13px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.03);transition:.2s}
 .level-row{display:flex;gap:15px;align-items:center}.level-badge{
   width:62px;height:62px;border-radius:18px;display:grid;place-items:center;font:700 15px "Space Grotesk";
   background:linear-gradient(135deg,rgba(255,209,102,.2),rgba(167,139,250,.16));border:1px solid rgba(255,209,102,.28);color:var(--gold)

@@ -1,4 +1,4 @@
-const CACHE_NAME = "sadhana-rpg-v1";
+const CACHE_NAME = "sadhana-rpg-v3";
 const ASSETS = [
   "./",
   "./index.html",
@@ -30,7 +30,7 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   event.respondWith(
-    fetch(event.request)
+    fetch(event.request, { cache: "no-store" })
       .then((res) => {
         if (res && res.status === 200 && res.type === "basic") {
           const copy = res.clone();

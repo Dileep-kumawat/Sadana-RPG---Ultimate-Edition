@@ -495,12 +495,14 @@ function openSettingsModal(){
       <div><label for="anchorSelect">Anchor Streak Quest</label><small>Protected from accidental delete</small></div>
       <select id="anchorSelect">${options}</select>
     </div>
+    <button class="setting-btn" id="settingsQuestsBtn"><span>Manage Quests (Add / Edit)</span><span>📜</span></button>
     <button class="setting-btn" id="settingsSoundBtn"><span>Sound Effects</span><span>${state.sound?"🔊 On":"🔇 Off"}</span></button>
     <button class="setting-btn" id="settingsExportBtn"><span>Export Backup (JSON)</span><span>⬇</span></button>
     <button class="setting-btn" id="settingsImportBtn"><span>Import Backup (JSON)</span><span>⬆</span></button>
     <button class="setting-btn danger" id="settingsResetBtn"><span>Reset All Progress</span><span>↺</span></button>
   </div>`;
-  openModal("⚙️","Settings","Manage your anchor quest, sound, and save data.",html);
+  openModal("⚙️","Settings","Manage your quests, anchor streak, sound, and save data.",html);
+  document.getElementById("settingsQuestsBtn").onclick=()=>{editingQuestId=null;openQuestsModal();};
   document.getElementById("anchorSelect").onchange=e=>{
     state.anchorQuestId=e.target.value;
     updateMantraStreak(false);
@@ -580,7 +582,6 @@ function openQuestsModal(){
 }
 document.getElementById("themeBtn").onclick=openThemeModal;
 document.getElementById("settingsBtn").onclick=openSettingsModal;
-document.getElementById("manageQuestsBtn").onclick=()=>{editingQuestId=null;openQuestsModal();};
 document.getElementById("sankalpaInput").addEventListener("input",e=>{todayData().sankalpa=e.target.value;save();});
 document.getElementById("reflectionInput").addEventListener("input",e=>{todayData().reflection=e.target.value;save();});
 document.getElementById("importFile").addEventListener("change",e=>{
