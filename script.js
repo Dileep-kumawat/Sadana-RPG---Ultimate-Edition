@@ -74,9 +74,12 @@ const blankState = () => ({
   totalXP:0, totalCompletions:0, counts:Object.fromEntries(quests.map(q=>[q.id,0])),
   days:{}, weeks:{}, mantraStreak:0, sadhanaStreak:0, maxMantraStreak:0, maxSadhanaStreak:0,
   shields:0, shieldMilestones:[], shieldUsedDays:[], relics:[], theme:"void",
+  quests:quests.map(q=>({...q})), anchorQuestId:"mantra",
   unlockedAchievements:[], defeatedBosses:{}, lastDay:null, sound:true
 });
 let state = load();
+function getQuests(){ return (state.quests||quests).filter(q=>!q.archived); }
+function findQuest(id){ return (state.quests||quests).find(q=>q.id===id) || quests.find(q=>q.id===id); }
 
 function effectiveDate(d=new Date()){
   const x=new Date(d);
@@ -122,7 +125,11 @@ function normalizeState(raw){
   s.relics=Array.isArray(s.relics)?s.relics:[];
   s.shields=Math.min(2,Math.max(0,Number(s.shields)||0));
   s.theme=typeof s.theme==="string"?s.theme:"void";
-  s.maxMantraStreak=Math.max(s.maxMantraStreak||0,s.mantraStreak||0,computeMaxStreak(s.days,d=>(d.done||[]).includes("mantra")));
+  s.quests=Array.isArray(s.quests)&&s.quests.length?s.quests:quests.map(q=>({...q}));
+  s.anchorQuestId=typeof s.anchorQuestId==="string"?s.anchorQuestId:"mantra";
+  s.counts=s.counts&&typeof s.counts==="object"?s.counts:{};
+  s.quests.forEach(q=>{ if(typeof s.counts[q.id]!=="number") s.counts[q.id]=0; });
+  s.maxMantraStreak=Math.max(s.maxMantraStreak||0,s.mantraStreak||0,computeMaxStreak(s.days,d=>(d.done||[]).includes(s.anchorQuestId||"mantra")));
   s.maxSadhanaStreak=Math.max(s.maxSadhanaStreak||0,s.sadhanaStreak||0,computeMaxStreak(s.days,d=>(d.xp||0)>=500));
   return s;
 }
@@ -179,7 +186,7 @@ function getChestState(today){
 }
 function claimDailyChest(){
   const t=todayData(), done=t.done||[];
-  const today=done.reduce((a,id)=>a+(quests.find(q=>q.id===id)?.xp||0),0)+comboBonus(done.length)+sacredBonus(done);
+  const today=done.reduce((a,id)=>a+(findQuest(id)?.xp||0),0)+comboBonus(done.length)+sacredBonus(done);
   const {claimable, next}=getChestState(today);
   if(!claimable.length){
     toast(next?`Reach ${next.min.toLocaleString()} XP to unlock ${next.name} Chest.`:"All daily chests claimed today!");
@@ -197,7 +204,7 @@ function claimDailyChest(){
   render();
 }
 function render(){
-  const t=todayData(), done=t.done||[], baseXP=done.reduce((a,id)=>a+(quests.find(q=>q.id===id)?.xp||0),0);
+  const t=todayData(), done=t.done||[], baseXP=done.reduce((a,id)=>a+(findQuest(id)?.xp||0),0);
   const combo=comboBonus(done.length), sacred=sacredBonus(done), today=baseXP+combo+sacred;
   const lvl=levelInfo(state.totalXP);
 
@@ -214,6 +221,15 @@ function render(){
   document.getElementById("comboNote").textContent = sacred ? "🕉️ Sacred Combo active: +200 XP" : combo ? `⚡ Combo bonus active: +${combo} XP` : "Complete quests to build your combo.";
   document.getElementById("sadhanaStreak").textContent=state.sadhanaStreak||0;
   document.getElementById("maxSadhanaStreak").textContent=state.maxSadhanaStreak||0;
+  const anchorQ=state.anchorQuestId?findQuest(state.anchorQuestId):null;
+  document.getElementById("anchorStreakPill").style.display=anchorQ?"":"none";
+  document.getElementById("anchorMaxPill").style.display=anchorQ?"":"none";
+  if(anchorQ){
+    const shortName=anchorQ.id==="mantra"?"Mantra":anchorQ.name.split(" - ")[0];
+    document.querySelector("#anchorStreakPill span").textContent=anchorQ.icon;
+    document.getElementById("anchorStreakLabel").textContent=`${shortName} streak`;
+    document.getElementById("anchorMaxLabel").textContent=`Max ${shortName}`;
+  }
   document.getElementById("mantraStreak").textContent=state.mantraStreak||0;
   document.getElementById("maxMantraStreak").textContent=state.maxMantraStreak||0;
   document.getElementById("shieldCount").textContent=state.shields||0;
@@ -251,7 +267,7 @@ function render(){
 }
 
 function renderQuests(done){
-  document.getElementById("questList").innerHTML=quests.map(q=>`
+  document.getElementById("questList").innerHTML=getQuests().map(q=>`
     <div class="quest ${done.includes(q.id)?"done":""}" data-id="${q.id}">
       <div class="check">${done.includes(q.id)?"✓":""}</div>
       <div><div class="quest-name">${q.icon} ${q.name}</div><div class="quest-type">${q.type}</div></div>
@@ -266,23 +282,23 @@ function toggleQuest(id){
     const oldXP=t.xp||0;
     done.splice(idx,1);
     t.done=done;
-    t.xp=done.reduce((a,x)=>a+(quests.find(q=>q.id===x)?.xp||0),0)+comboBonus(done.length)+sacredBonus(done);
+    t.xp=done.reduce((a,x)=>a+(findQuest(x)?.xp||0),0)+comboBonus(done.length)+sacredBonus(done);
     const delta=oldXP-t.xp;
     state.totalXP=Math.max(0,state.totalXP-delta);
     state.totalCompletions=Math.max(0,state.totalCompletions-1);
     state.counts[id]=Math.max(0,(state.counts[id]||0)-1);
-    if(id==="mantra") updateMantraStreak(false);
+    if(id===state.anchorQuestId) updateMantraStreak(false);
     updateSadhanaStreak(false);
     toast(`Quest undone (-${delta} XP). Past days remain safe.`);
     render();
     return;
   }
-  const q=quests.find(x=>x.id===id); done.push(id);
+  const q=findQuest(id); if(!q) return; done.push(id);
   const oldBase=t.xp||0;
-  t.done=done; t.xp=done.reduce((a,x)=>a+(quests.find(q=>q.id===x)?.xp||0),0)+comboBonus(done.length)+sacredBonus(done);
+  t.done=done; t.xp=done.reduce((a,x)=>a+(findQuest(x)?.xp||0),0)+comboBonus(done.length)+sacredBonus(done);
   const delta=t.xp-oldBase;
-  state.totalXP += delta; state.totalCompletions++; state.counts[id]++;
-  if(id==="mantra") updateMantraStreak();
+  state.totalXP += delta; state.totalCompletions++; state.counts[id]=(state.counts[id]||0)+1;
+  if(id===state.anchorQuestId) updateMantraStreak();
   updateSadhanaStreak();
   spawnXP(delta); beep();
   toast(`+${delta} XP — ${q.name}`);
@@ -324,11 +340,12 @@ function grantShieldIfEarned(type, streak){
   }
 }
 function updateMantraStreak(awardBonus=true){
-  const s=calcStreak(d=>(d.done||[]).includes("mantra"));
+  if(!state.anchorQuestId){ state.mantraStreak=0; return; }
+  const s=calcStreak(d=>(d.done||[]).includes(state.anchorQuestId));
   const prev=state.mantraStreak||0; state.mantraStreak=s;
   state.maxMantraStreak=Math.max(state.maxMantraStreak||0,s);
   grantShieldIfEarned("mantra",s);
-  if(awardBonus && s>prev){ const b=streakBonus("mantra",s); if(b){state.totalXP+=b; toast(`🔥 Mantra milestone: +${b.toLocaleString()} XP`);}}
+  if(awardBonus && s>prev){ const b=streakBonus("mantra",s); if(b){state.totalXP+=b; toast(`🔥 Anchor milestone: +${b.toLocaleString()} XP`);}}
 }
 function updateSadhanaStreak(awardBonus=true){
   const s=calcStreak(d=>(d.xp||0)>=500);
@@ -418,7 +435,7 @@ function openDayModal(k){
   const d=state.days[k]||{};
   const xp=d.xp||0;
   const shielded=state.shieldUsedDays.includes(k);
-  const doneNames=(d.done||[]).map(id=>quests.find(q=>q.id===id)).filter(Boolean).map(q=>`${q.icon} ${q.name}`);
+  const doneNames=(d.done||[]).map(id=>findQuest(id)).filter(Boolean).map(q=>`${q.icon} ${q.name}`);
   const rows=[
     `<div class="day-chip"><b>XP Earned:</b> ${xp.toLocaleString()} XP${shielded?" · 🛡️ Protected by Streak Shield":""}</div>`,
     d.sankalpa?`<div class="day-chip"><b>🕉️ Sankalpa:</b> ${d.sankalpa.replace(/</g,"&lt;")}</div>`:"",
@@ -467,19 +484,105 @@ function closeModal(){document.getElementById("modalBackdrop").classList.remove(
 document.getElementById("modalClose").onclick=closeModal;
 document.getElementById("modalOK").onclick=closeModal;
 document.getElementById("modalBackdrop").addEventListener("click",e=>{if(e.target.id==="modalBackdrop")closeModal()});
+function openSettingsModal(){
+  const activeQuests=getQuests();
+  const options=[
+    ...activeQuests.map(q=>`<option value="${q.id}" ${state.anchorQuestId===q.id?"selected":""}>${q.icon} ${q.name}</option>`),
+    `<option value="" ${!state.anchorQuestId?"selected":""}>None (Hide 2nd streak)</option>`
+  ].join("");
+  const html=`<div class="settings-list">
+    <div class="setting-row">
+      <div><label for="anchorSelect">Anchor Streak Quest</label><small>Protected from accidental delete</small></div>
+      <select id="anchorSelect">${options}</select>
+    </div>
+    <button class="setting-btn" id="settingsSoundBtn"><span>Sound Effects</span><span>${state.sound?"🔊 On":"🔇 Off"}</span></button>
+    <button class="setting-btn" id="settingsExportBtn"><span>Export Backup (JSON)</span><span>⬇</span></button>
+    <button class="setting-btn" id="settingsImportBtn"><span>Import Backup (JSON)</span><span>⬆</span></button>
+    <button class="setting-btn danger" id="settingsResetBtn"><span>Reset All Progress</span><span>↺</span></button>
+  </div>`;
+  openModal("⚙️","Settings","Manage your anchor quest, sound, and save data.",html);
+  document.getElementById("anchorSelect").onchange=e=>{
+    state.anchorQuestId=e.target.value;
+    updateMantraStreak(false);
+    save(); render();
+    toast(state.anchorQuestId?"Anchor quest updated!":"Anchor streak hidden.");
+  };
+  document.getElementById("settingsSoundBtn").onclick=()=>{
+    state.sound=!state.sound; save(); openSettingsModal();
+    toast(state.sound?"Sounds on":"Sounds off");
+  };
+  document.getElementById("settingsExportBtn").onclick=()=>{
+    const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});
+    const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
+    a.download=`sadhana-rpg-backup-${dateKey()}.json`; a.click(); URL.revokeObjectURL(a.href);
+    toast("Backup exported!");
+  };
+  document.getElementById("settingsImportBtn").onclick=()=>document.getElementById("importFile").click();
+  document.getElementById("settingsResetBtn").onclick=()=>{
+    if(confirm("Reset ALL Sadhana RPG progress? This cannot be undone.")){
+      state=blankState(); knownAchievements=new Set(); save(); closeModal(); render();
+      toast("Fresh save created. New adventure begins!");
+    }
+  };
+}
+let editingQuestId=null;
+function openQuestsModal(){
+  const types=["MAIN QUEST","SPIRITUAL QUEST","CAREER QUEST","ACADEMIC QUEST","HEALTH QUEST","WISDOM QUEST","BALANCE QUEST","CUSTOM QUEST"];
+  const eq=editingQuestId?findQuest(editingQuestId):null;
+  const listHtml=getQuests().map(q=>{
+    const isAnchor=q.id===state.anchorQuestId;
+    return `<div class="quest-mgr-item">
+      <div><b>${q.icon} ${q.name}</b><small>+${q.xp} XP · ${q.type}${isAnchor?" · 🔒 Anchor":""}</small></div>
+      <div class="quest-mgr-actions">
+        <button class="icon-mini" data-edit="${q.id}" title="Edit">✏️</button>
+        ${isAnchor?`<span class="icon-mini" title="Anchor quest protected">🔒</span>`:`<button class="icon-mini" data-del="${q.id}" title="Remove">🗑️</button>`}
+      </div>
+    </div>`;
+  }).join("");
+  const html=`<div class="quest-mgr">
+    <form class="quest-form" id="questForm">
+      <input id="qfIcon" type="text" maxlength="4" value="${eq?eq.icon:"✨"}" placeholder="✨" required />
+      <input id="qfName" type="text" maxlength="45" value="${eq?eq.name.replace(/"/g,"&quot;"):""}" placeholder="Quest name..." required />
+      <input id="qfXP" type="number" min="10" max="1000" step="10" value="${eq?eq.xp:100}" required />
+      <select id="qfType">${types.map(t=>`<option ${eq&&eq.type===t?"selected":""}>${t}</option>`).join("")}</select>
+      <button class="primary-btn" type="submit">${eq?"Save Quest Changes":"+ Add New Quest"}</button>
+    </form>
+    <div class="quest-mgr-list">${listHtml}</div>
+  </div>`;
+  openModal("📜","Manage Quests","Add new quests or edit existing ones. Anchor quest cannot be deleted.",html);
+  document.getElementById("questForm").onsubmit=e=>{
+    e.preventDefault();
+    const icon=(document.getElementById("qfIcon").value||"✨").trim();
+    const name=document.getElementById("qfName").value.trim();
+    const xp=Math.max(10,Math.min(1000,Number(document.getElementById("qfXP").value)||50));
+    const type=document.getElementById("qfType").value;
+    if(!name) return;
+    if(editingQuestId){
+      const target=findQuest(editingQuestId);
+      if(target){ target.icon=icon; target.name=name; target.xp=xp; target.type=type; }
+      editingQuestId=null; toast("Quest updated!");
+    } else {
+      const id="q_"+Date.now().toString(36);
+      state.quests.push({id,icon,name,xp,type});
+      state.counts[id]=0;
+      toast("Quest added!");
+    }
+    save(); render(); openQuestsModal();
+  };
+  document.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>{editingQuestId=b.dataset.edit; openQuestsModal();});
+  document.querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>{
+    const q=findQuest(b.dataset.del);
+    if(!q || q.id===state.anchorQuestId) return;
+    q.archived=true;
+    save(); render(); openQuestsModal();
+    toast(`Removed ${q.name}`);
+  });
+}
 document.getElementById("themeBtn").onclick=openThemeModal;
+document.getElementById("settingsBtn").onclick=openSettingsModal;
+document.getElementById("manageQuestsBtn").onclick=()=>{editingQuestId=null;openQuestsModal();};
 document.getElementById("sankalpaInput").addEventListener("input",e=>{todayData().sankalpa=e.target.value;save();});
 document.getElementById("reflectionInput").addEventListener("input",e=>{todayData().reflection=e.target.value;save();});
-document.getElementById("exportBtn").onclick=()=>{
-  const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});
-  const a=document.createElement("a");
-  a.href=URL.createObjectURL(blob);
-  a.download=`sadhana-rpg-backup-${dateKey()}.json`;
-  a.click();
-  URL.revokeObjectURL(a.href);
-  toast("Backup exported!");
-};
-document.getElementById("importBtn").onclick=()=>document.getElementById("importFile").click();
 document.getElementById("importFile").addEventListener("change",e=>{
   const file=e.target.files?.[0];
   e.target.value="";
@@ -502,16 +605,13 @@ document.getElementById("importFile").addEventListener("change",e=>{
       updateMantraStreak(false);
       updateSadhanaStreak(false);
       save();
+      closeModal();
       render();
       toast("Backup restored!");
     }catch{ toast("Could not read backup file."); }
   };
   reader.readAsText(file);
 });
-document.getElementById("soundBtn").onclick=()=>{state.sound=!state.sound;document.getElementById("soundBtn").textContent=state.sound?"🔊":"🔇";save();toast(state.sound?"Sounds on":"Sounds off")};
-document.getElementById("resetBtn").onclick=()=>{
-  if(confirm("Reset ALL Sadhana RPG progress? This cannot be undone.")){state=blankState();knownAchievements=new Set();save();render();toast("Fresh save created. New adventure begins!")}
-};
 document.getElementById("chest").onclick=claimDailyChest;
 document.getElementById("bossBtn").onclick=()=>{
   const {boss, defeated}=getBossState();
@@ -519,7 +619,6 @@ document.getElementById("bossBtn").onclick=()=>{
   else openModal(boss.icon,"Weekly Boss Battle","Your boss is defeated by consistency, not perfection. Reach the target XP and complete the listed objectives.");
 };
 document.getElementById("greeting").textContent = `Welcome, Sadhaka.`;
-document.getElementById("soundBtn").textContent=state.sound?"🔊":"🔇";
 updateMantraStreak(false);
 updateSadhanaStreak(false);
 achievements.forEach(a=>{

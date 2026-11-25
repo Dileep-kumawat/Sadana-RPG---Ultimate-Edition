@@ -38,11 +38,8 @@
     </div>
     <div class="top-actions">
       <button class="icon-btn" id="themeBtn" title="Choose theme">🎨</button>
-      <button class="icon-btn" id="exportBtn" title="Export backup (JSON)">⬇</button>
-      <button class="icon-btn" id="importBtn" title="Import backup (JSON)">⬆</button>
+      <button class="icon-btn" id="settingsBtn" title="Settings &amp; Backup">⚙️</button>
       <input type="file" id="importFile" accept="application/json,.json" hidden />
-      <button class="icon-btn" id="soundBtn" title="Toggle sounds">🔊</button>
-      <button class="icon-btn" id="resetBtn" title="Reset all progress">↺</button>
     </div>
   </header>
 
@@ -70,8 +67,8 @@
         <div class="stat-pills">
           <div class="stat-pill"><span>🔥</span><b id="sadhanaStreak">0</b><small>Sadhana streak</small></div>
           <div class="stat-pill"><span>🏅</span><b id="maxSadhanaStreak">0</b><small>Max Sadhana</small></div>
-          <div class="stat-pill"><span>🧘</span><b id="mantraStreak">0</b><small>Mantra streak</small></div>
-          <div class="stat-pill"><span>💎</span><b id="maxMantraStreak">0</b><small>Max Mantra</small></div>
+          <div class="stat-pill" id="anchorStreakPill"><span>🧘</span><b id="mantraStreak">0</b><small id="anchorStreakLabel">Mantra streak</small></div>
+          <div class="stat-pill" id="anchorMaxPill"><span>💎</span><b id="maxMantraStreak">0</b><small id="anchorMaxLabel">Max Mantra</small></div>
           <div class="stat-pill"><span>🛡️</span><b id="shieldCount">0</b><small>Streak shields</small></div>
           <div class="stat-pill"><span>🏆</span><b id="lifetimeXP">0</b><small>Lifetime XP</small></div>
         </div>
@@ -105,7 +102,10 @@
             <div class="eyebrow">QUEST BOARD</div>
             <h2>Daily Quests</h2>
           </div>
-          <div class="combo" id="comboBadge">COMBO ×0</div>
+          <div class="quest-head-actions">
+            <button class="mini-btn" id="manageQuestsBtn" title="Add or edit quests">✏️ Quests</button>
+            <div class="combo" id="comboBadge">COMBO ×0</div>
+          </div>
         </div>
         <div class="quest-list" id="questList"></div>
         <div class="combo-note" id="comboNote">Complete quests to build your combo.</div>
