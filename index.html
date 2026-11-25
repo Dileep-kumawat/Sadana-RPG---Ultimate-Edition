@@ -37,6 +37,7 @@
       </div>
     </div>
     <div class="top-actions">
+      <button class="icon-btn" id="themeBtn" title="Choose theme">🎨</button>
       <button class="icon-btn" id="exportBtn" title="Export backup (JSON)">⬇</button>
       <button class="icon-btn" id="importBtn" title="Import backup (JSON)">⬆</button>
       <input type="file" id="importFile" accept="application/json,.json" hidden />
@@ -52,6 +53,11 @@
         <h1 id="greeting">Welcome, Sadhaka.</h1>
         <p>Show up. Earn XP. Build your streak. Defeat the week.</p>
 
+        <div class="sankalpa-box">
+          <span>🕉️</span>
+          <input id="sankalpaInput" type="text" maxlength="100" placeholder="Set today's Sankalpa (intention)..." />
+        </div>
+
         <div class="level-row">
           <div class="level-badge" id="levelNumber">LV 1</div>
           <div class="level-copy">
@@ -66,6 +72,7 @@
           <div class="stat-pill"><span>🏅</span><b id="maxSadhanaStreak">0</b><small>Max Sadhana</small></div>
           <div class="stat-pill"><span>🧘</span><b id="mantraStreak">0</b><small>Mantra streak</small></div>
           <div class="stat-pill"><span>💎</span><b id="maxMantraStreak">0</b><small>Max Mantra</small></div>
+          <div class="stat-pill"><span>🛡️</span><b id="shieldCount">0</b><small>Streak shields</small></div>
           <div class="stat-pill"><span>🏆</span><b id="lifetimeXP">0</b><small>Lifetime XP</small></div>
         </div>
       </div>
@@ -84,6 +91,9 @@
             <b id="chestTitle">Daily Chest</b>
             <small id="chestText">Reach 300 XP to unlock Bronze.</small>
           </div>
+        </div>
+        <div class="reflection-box">
+          <input id="reflectionInput" type="text" maxlength="120" placeholder="✍️ Quick 1-line reflection for today..." />
         </div>
       </div>
     </section>
@@ -120,6 +130,7 @@
         </div>
         <div class="boss-objectives" id="bossObjectives"></div>
         <button class="primary-btn" id="bossBtn">⚔️ View Boss</button>
+        <div class="relic-shelf" id="relicShelf"></div>
       </aside>
     </section>
 
@@ -155,10 +166,10 @@
     <section class="panel streak-panel">
       <div class="panel-head">
         <div>
-          <div class="eyebrow">STREAK ENGINE</div>
+          <div class="eyebrow">ACTIVITY HEATMAP</div>
           <h2>Consistency beats perfection.</h2>
         </div>
-        <div class="streak-rule">500 XP = Sadhana day</div>
+        <div class="streak-rule">500 XP = Sadhana day · Tap any day</div>
       </div>
       <div class="streak-track" id="streakTrack"></div>
     </section>
@@ -179,6 +190,7 @@
       <div class="modal-icon" id="modalIcon">🏆</div>
       <h2 id="modalTitle">Achievement unlocked</h2>
       <p id="modalText"></p>
+      <div id="modalExtra"></div>
       <button class="primary-btn" id="modalOK">Continue</button>
     </div>
   </div>

@@ -27,12 +27,14 @@ const achievements = [
 const bosses = [
   {
     name:"The Procrastination Demon", icon:"👹", target:3000, desc:"Earn 3,000 XP this week.",
+    relic:{id:"action_blade", icon:"🗡️", name:"Blade of Action"},
     obj:[
       {label:"3,000 XP this week", check:xp=>xp>=3000, progress:xp=>`${Math.min(xp,3000).toLocaleString()}/3,000`}
     ]
   },
   {
     name:"The Distraction Beast", icon:"👾", target:4000, desc:"Earn 4,000 XP + 7 Mantra sessions.",
+    relic:{id:"focus_eye", icon:"🧿", name:"Eye of Focus"},
     obj:[
       {label:"4,000 XP this week", check:xp=>xp>=4000, progress:xp=>`${Math.min(xp,4000).toLocaleString()}/4,000`},
       {label:"7 Mantra sessions", check:(_,c)=>(c.mantra||0)>=7, progress:(_,c)=>`${Math.min(c.mantra||0,7)}/7`}
@@ -40,6 +42,7 @@ const bosses = [
   },
   {
     name:"The Laziness Titan", icon:"🗿", target:5000, desc:"Earn 5,000 XP with a strong study/career week.",
+    relic:{id:"resolve_core", icon:"🪨", name:"Core of Resolve"},
     obj:[
       {label:"5,000 XP this week", check:xp=>xp>=5000, progress:xp=>`${Math.min(xp,5000).toLocaleString()}/5,000`},
       {label:"4 Project sessions", check:(_,c)=>(c.project||0)>=4, progress:(_,c)=>`${Math.min(c.project||0,4)}/4`},
@@ -48,6 +51,7 @@ const bosses = [
   },
   {
     name:"The Chaos Dragon", icon:"🐉", target:6000, desc:"The ultimate weekly challenge.",
+    relic:{id:"discipline_crown", icon:"🔥", name:"Crown of Discipline"},
     obj:[
       {label:"6,000 XP this week", check:xp=>xp>=6000, progress:xp=>`${Math.min(xp,6000).toLocaleString()}/6,000`},
       {label:"7 Mantra sessions", check:(_,c)=>(c.mantra||0)>=7, progress:(_,c)=>`${Math.min(c.mantra||0,7)}/7`},
@@ -56,12 +60,20 @@ const bosses = [
   }
 ];
 
+const themes = [
+  {id:"void", name:"Midnight Void", level:1, icon:"🌌"},
+  {id:"saffron", name:"Saffron Dawn", level:2, icon:"🌅"},
+  {id:"emerald", name:"Vrindavan Emerald", level:3, icon:"🌿"},
+  {id:"tapasya", name:"Royal Tapasya", level:5, icon:"🔥"}
+];
+
 const titles = ["Beginner","Initiate","Disciplined","Focused","Consistent","Dedicated","Relentless","Elite","Master","Sadhana Legend"];
 const STORAGE = "sadhana-rpg-ultimate-v1";
 
 const blankState = () => ({
   totalXP:0, totalCompletions:0, counts:Object.fromEntries(quests.map(q=>[q.id,0])),
   days:{}, weeks:{}, mantraStreak:0, sadhanaStreak:0, maxMantraStreak:0, maxSadhanaStreak:0,
+  shields:0, shieldMilestones:[], shieldUsedDays:[], relics:[], theme:"void",
   unlockedAchievements:[], defeatedBosses:{}, lastDay:null, sound:true
 });
 let state = load();
@@ -105,9 +117,20 @@ function normalizeState(raw){
   const s={...blankState(),...(raw||{})};
   s.unlockedAchievements=Array.isArray(s.unlockedAchievements)?s.unlockedAchievements:[];
   s.defeatedBosses=s.defeatedBosses&&typeof s.defeatedBosses==="object"?s.defeatedBosses:{};
+  s.shieldMilestones=Array.isArray(s.shieldMilestones)?s.shieldMilestones:[];
+  s.shieldUsedDays=Array.isArray(s.shieldUsedDays)?s.shieldUsedDays:[];
+  s.relics=Array.isArray(s.relics)?s.relics:[];
+  s.shields=Math.min(2,Math.max(0,Number(s.shields)||0));
+  s.theme=typeof s.theme==="string"?s.theme:"void";
   s.maxMantraStreak=Math.max(s.maxMantraStreak||0,s.mantraStreak||0,computeMaxStreak(s.days,d=>(d.done||[]).includes("mantra")));
   s.maxSadhanaStreak=Math.max(s.maxSadhanaStreak||0,s.sadhanaStreak||0,computeMaxStreak(s.days,d=>(d.xp||0)>=500));
   return s;
+}
+function applyTheme(){
+  const lvl=levelInfo(state.totalXP).level;
+  const active=themes.find(t=>t.id===state.theme && lvl>=t.level)?.id || "void";
+  if(active==="void") document.body.removeAttribute("data-theme");
+  else document.body.setAttribute("data-theme",active);
 }
 function save(){ localStorage.setItem(STORAGE,JSON.stringify(state)); }
 function load(){
@@ -193,6 +216,12 @@ function render(){
   document.getElementById("maxSadhanaStreak").textContent=state.maxSadhanaStreak||0;
   document.getElementById("mantraStreak").textContent=state.mantraStreak||0;
   document.getElementById("maxMantraStreak").textContent=state.maxMantraStreak||0;
+  document.getElementById("shieldCount").textContent=state.shields||0;
+  const sankalpaEl=document.getElementById("sankalpaInput");
+  if(document.activeElement!==sankalpaEl) sankalpaEl.value=t.sankalpa||"";
+  const reflectEl=document.getElementById("reflectionInput");
+  if(document.activeElement!==reflectEl) reflectEl.value=t.reflection||"";
+  applyTheme();
 
   const {claimable, next, highest}=getChestState(today);
   const chestEl=document.getElementById("chest");
@@ -262,26 +291,50 @@ function toggleQuest(id){
   render();
 }
 
-function calcStreak(predicate){
-  const cur=effectiveDate();
-  if(!predicate(state.days[localDateStr(cur)]||{})) cur.setDate(cur.getDate()-1);
+function calcStreak(predicate, allowShield=true){
+  const cur=effectiveDate(), todayK=localDateStr(cur);
+  if(!predicate(state.days[todayK]||{})) cur.setDate(cur.getDate()-1);
   let s=0;
-  while(predicate(state.days[localDateStr(cur)]||{})){
-    s++;
-    cur.setDate(cur.getDate()-1);
+  while(true){
+    const k=localDateStr(cur);
+    if(predicate(state.days[k]||{}) || state.shieldUsedDays.includes(k)){
+      s++; cur.setDate(cur.getDate()-1); continue;
+    }
+    if(allowShield && k<todayK && state.shields>0){
+      const prev=new Date(cur); prev.setDate(prev.getDate()-1);
+      if(predicate(state.days[localDateStr(prev)]||{})){
+        state.shields--;
+        state.shieldUsedDays.push(k);
+        toast("🛡️ Streak Shield activated! Your streak was saved.");
+        s++; cur.setDate(cur.getDate()-1); continue;
+      }
+    }
+    break;
   }
   return s;
+}
+function grantShieldIfEarned(type, streak){
+  if(![14,30,60,100].includes(streak)) return;
+  const key=`${type}:${streak}`;
+  if(state.shieldMilestones.includes(key)) return;
+  state.shieldMilestones.push(key);
+  if(state.shields<2){
+    state.shields++;
+    toast("🛡️ Earned +1 Streak Shield!");
+  }
 }
 function updateMantraStreak(awardBonus=true){
   const s=calcStreak(d=>(d.done||[]).includes("mantra"));
   const prev=state.mantraStreak||0; state.mantraStreak=s;
   state.maxMantraStreak=Math.max(state.maxMantraStreak||0,s);
+  grantShieldIfEarned("mantra",s);
   if(awardBonus && s>prev){ const b=streakBonus("mantra",s); if(b){state.totalXP+=b; toast(`🔥 Mantra milestone: +${b.toLocaleString()} XP`);}}
 }
 function updateSadhanaStreak(awardBonus=true){
   const s=calcStreak(d=>(d.xp||0)>=500);
   const prev=state.sadhanaStreak||0; state.sadhanaStreak=s;
   state.maxSadhanaStreak=Math.max(state.maxSadhanaStreak||0,s);
+  grantShieldIfEarned("sadhana",s);
   if(awardBonus && s>prev){ const b=streakBonus("sadhana",s); if(b){state.totalXP+=b; toast(`🔥 Sadhana streak ${s}: +${b.toLocaleString()} XP`);}}
 }
 
@@ -321,9 +374,10 @@ function checkBossDefeat(){
   if(!defeated) return;
   const key=`${weekKey()}:${boss.name}`;
   if(!state.defeatedBosses) state.defeatedBosses={};
+  if(boss.relic && !state.relics.includes(boss.relic.id)) state.relics.push(boss.relic.id);
   if(!state.defeatedBosses[key]){
     state.defeatedBosses[key]=true;
-    openModal("🏆","Weekly Boss Defeated!",`You defeated ${boss.name}! All weekly objectives are complete.`);
+    openModal("🏆","Weekly Boss Defeated!",`You defeated ${boss.name}! Relic unlocked: ${boss.relic.icon} ${boss.relic.name}.`);
   }
 }
 function renderBoss(){
@@ -344,6 +398,10 @@ function renderBoss(){
     const ok=o.check(weekXP,wc);
     return `<div class="objective ${ok?"done":""}"><span>${o.label}</span><b>${ok?"✅":o.progress(weekXP,wc)+" ⚔️"}</b></div>`;
   }).join("");
+  document.getElementById("relicShelf").innerHTML=bosses.map(b=>{
+    const has=state.relics.includes(b.relic.id);
+    return `<span class="relic-pill ${has?"":"locked"}" title="${has?"Unlocked":"Defeat "+b.name}">${b.relic.icon} ${b.relic.name}</span>`;
+  }).join("");
 }
 function renderLeaderboard(){
   const thisWeek=currentWeekXP();
@@ -356,23 +414,62 @@ function renderLeaderboard(){
   document.getElementById("bestWeek").textContent=best.toLocaleString()+" XP";
   document.getElementById("weekChange").textContent=(thisWeek-previous>=0?"+":"")+((thisWeek-previous).toLocaleString())+" XP";
 }
+function openDayModal(k){
+  const d=state.days[k]||{};
+  const xp=d.xp||0;
+  const shielded=state.shieldUsedDays.includes(k);
+  const doneNames=(d.done||[]).map(id=>quests.find(q=>q.id===id)).filter(Boolean).map(q=>`${q.icon} ${q.name}`);
+  const rows=[
+    `<div class="day-chip"><b>XP Earned:</b> ${xp.toLocaleString()} XP${shielded?" · 🛡️ Protected by Streak Shield":""}</div>`,
+    d.sankalpa?`<div class="day-chip"><b>🕉️ Sankalpa:</b> ${d.sankalpa.replace(/</g,"&lt;")}</div>`:"",
+    d.reflection?`<div class="day-chip"><b>✍️ Reflection:</b> ${d.reflection.replace(/</g,"&lt;")}</div>`:"",
+    `<div class="day-chip"><b>Completed Quests (${doneNames.length}):</b><br>${doneNames.length?doneNames.join("<br>"):"None recorded"}</div>`
+  ].filter(Boolean).join("");
+  openModal("📅",k,xp>=500?"Sadhana Day achieved!":"Activity summary",`<div class="day-summary">${rows}</div>`);
+}
 function renderStreak(){
-  const el=document.getElementById("streakTrack"), base=effectiveDate(); base.setDate(base.getDate()-13);
+  const el=document.getElementById("streakTrack"), base=effectiveDate(); base.setDate(base.getDate()-27);
   const todayK=dateKey();
-  el.innerHTML=Array.from({length:14},(_,i)=>{
+  el.innerHTML=Array.from({length:28},(_,i)=>{
     const d=new Date(base);d.setDate(base.getDate()+i);const k=localDateStr(d);
-    const active=(state.days[k]?.xp||0)>=500; const today=k===todayK;
-    return `<div class="day-dot ${active?"active":""} ${today?"today":""}"><div class="dot"></div><small>${d.toLocaleDateString(undefined,{weekday:"narrow"})}</small></div>`;
+    const xp=state.days[k]?.xp||0;
+    const shielded=state.shieldUsedDays.includes(k);
+    const cls=xp>=900?"legend":xp>=500?"active":xp>0?"partial":shielded?"shielded":"";
+    const today=k===todayK;
+    return `<div class="day-dot ${cls} ${today?"today":""}" data-day="${k}" title="${k}: ${xp} XP"><div class="dot">${shielded?"🛡️":""}</div><small>${d.getDate()}</small></div>`;
   }).join("");
+  el.querySelectorAll(".day-dot").forEach(dot=>dot.addEventListener("click",()=>openDayModal(dot.dataset.day)));
 }
 function toast(msg){const el=document.getElementById("toast");el.textContent=msg;el.classList.add("show");clearTimeout(window.toastT);window.toastT=setTimeout(()=>el.classList.remove("show"),2200)}
 function spawnXP(n){const e=document.createElement("div");e.className="spark";e.textContent=`+${n} XP`;e.style.left=(window.innerWidth/2+Math.random()*80-40)+"px";e.style.top=(window.innerHeight/2+Math.random()*40-20)+"px";document.body.appendChild(e);setTimeout(()=>e.remove(),900)}
 function beep(){if(!state.sound)return;try{const c=new (window.AudioContext||window.webkitAudioContext)(),o=c.createOscillator(),g=c.createGain();o.frequency.value=660;g.gain.value=.035;o.connect(g);g.connect(c.destination);o.start();o.stop(c.currentTime+.08)}catch{}}
-function openModal(icon,title,text){document.getElementById("modalIcon").textContent=icon;document.getElementById("modalTitle").textContent=title;document.getElementById("modalText").textContent=text;document.getElementById("modalBackdrop").classList.add("open")}
+function openModal(icon,title,text,extraHtml=""){
+  document.getElementById("modalIcon").textContent=icon;
+  document.getElementById("modalTitle").textContent=title;
+  document.getElementById("modalText").textContent=text;
+  document.getElementById("modalExtra").innerHTML=extraHtml;
+  document.getElementById("modalBackdrop").classList.add("open");
+}
+function openThemeModal(){
+  const lvl=levelInfo(state.totalXP).level;
+  const html=`<div class="theme-grid">${themes.map(t=>{
+    const unlocked=lvl>=t.level, active=state.theme===t.id;
+    return `<button class="theme-option ${active?"active":""} ${unlocked?"":"locked"}" data-theme="${t.id}" ${unlocked?"":"disabled"}><span>${t.icon} ${t.name}</span><small>${unlocked?(active?"Active":"Select"):`Unlocks LV ${t.level}`}</small></button>`;
+  }).join("")}</div>`;
+  openModal("🎨","Choose Theme","Unlock new themes as you level up.",html);
+  document.querySelectorAll(".theme-option:not([disabled])").forEach(btn=>btn.onclick=()=>{
+    state.theme=btn.dataset.theme;
+    applyTheme(); save(); closeModal();
+    toast("Theme updated!");
+  });
+}
 function closeModal(){document.getElementById("modalBackdrop").classList.remove("open")}
 document.getElementById("modalClose").onclick=closeModal;
 document.getElementById("modalOK").onclick=closeModal;
 document.getElementById("modalBackdrop").addEventListener("click",e=>{if(e.target.id==="modalBackdrop")closeModal()});
+document.getElementById("themeBtn").onclick=openThemeModal;
+document.getElementById("sankalpaInput").addEventListener("input",e=>{todayData().sankalpa=e.target.value;save();});
+document.getElementById("reflectionInput").addEventListener("input",e=>{todayData().reflection=e.target.value;save();});
 document.getElementById("exportBtn").onclick=()=>{
   const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});
   const a=document.createElement("a");
