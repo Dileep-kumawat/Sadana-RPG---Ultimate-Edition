@@ -460,8 +460,26 @@ function renderStreak(){
 function toast(msg){const el=document.getElementById("toast");el.textContent=msg;el.classList.add("show");clearTimeout(window.toastT);window.toastT=setTimeout(()=>el.classList.remove("show"),2200)}
 function spawnXP(n){const e=document.createElement("div");e.className="spark";e.textContent=`+${n} XP`;e.style.left=(window.innerWidth/2+Math.random()*80-40)+"px";e.style.top=(window.innerHeight/2+Math.random()*40-20)+"px";document.body.appendChild(e);setTimeout(()=>e.remove(),900)}
 function beep(){if(!state.sound)return;try{const c=new (window.AudioContext||window.webkitAudioContext)(),o=c.createOscillator(),g=c.createGain();o.frequency.value=660;g.gain.value=.035;o.connect(g);g.connect(c.destination);o.start();o.stop(c.currentTime+.08)}catch{}}
+const ICONS = {
+  settings:'<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
+  palette:'<circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>',
+  list:'<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>',
+  volOn:'<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>',
+  volOff:'<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>',
+  download:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+  upload:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>',
+  reset:'<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>',
+  edit:'<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>',
+  trash:'<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+  lock:'<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>'
+};
+function ico(name,size=16){
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]||""}</svg>`;
+}
 function openModal(icon,title,text,extraHtml=""){
-  document.getElementById("modalIcon").textContent=icon;
+  const iconEl=document.getElementById("modalIcon");
+  if(icon && icon.startsWith("<svg")) iconEl.innerHTML=icon;
+  else iconEl.textContent=icon;
   document.getElementById("modalTitle").textContent=title;
   document.getElementById("modalText").textContent=text;
   document.getElementById("modalExtra").innerHTML=extraHtml;
@@ -473,7 +491,7 @@ function openThemeModal(){
     const unlocked=lvl>=t.level, active=state.theme===t.id;
     return `<button class="theme-option ${active?"active":""} ${unlocked?"":"locked"}" data-theme="${t.id}" ${unlocked?"":"disabled"}><span>${t.icon} ${t.name}</span><small>${unlocked?(active?"Active":"Select"):`Unlocks LV ${t.level}`}</small></button>`;
   }).join("")}</div>`;
-  openModal("🎨","Choose Theme","Unlock new themes as you level up.",html);
+  openModal(ico("palette",36),"Choose Theme","Unlock new themes as you level up.",html);
   document.querySelectorAll(".theme-option:not([disabled])").forEach(btn=>btn.onclick=()=>{
     state.theme=btn.dataset.theme;
     applyTheme(); save(); closeModal();
@@ -495,13 +513,13 @@ function openSettingsModal(){
       <div><label for="anchorSelect">Anchor Streak Quest</label><small>Protected from accidental delete</small></div>
       <select id="anchorSelect">${options}</select>
     </div>
-    <button class="setting-btn" id="settingsQuestsBtn"><span>Manage Quests (Add / Edit)</span><span>📜</span></button>
-    <button class="setting-btn" id="settingsSoundBtn"><span>Sound Effects</span><span>${state.sound?"🔊 On":"🔇 Off"}</span></button>
-    <button class="setting-btn" id="settingsExportBtn"><span>Export Backup (JSON)</span><span>⬇</span></button>
-    <button class="setting-btn" id="settingsImportBtn"><span>Import Backup (JSON)</span><span>⬆</span></button>
-    <button class="setting-btn danger" id="settingsResetBtn"><span>Reset All Progress</span><span>↺</span></button>
+    <button class="setting-btn" id="settingsQuestsBtn"><span>Manage Quests (Add / Edit)</span><span class="setting-val">${ico("list",16)}</span></button>
+    <button class="setting-btn" id="settingsSoundBtn"><span>Sound Effects</span><span class="setting-val">${ico(state.sound?"volOn":"volOff",16)} ${state.sound?"On":"Off"}</span></button>
+    <button class="setting-btn" id="settingsExportBtn"><span>Export Backup (JSON)</span><span class="setting-val">${ico("download",16)}</span></button>
+    <button class="setting-btn" id="settingsImportBtn"><span>Import Backup (JSON)</span><span class="setting-val">${ico("upload",16)}</span></button>
+    <button class="setting-btn danger" id="settingsResetBtn"><span>Reset All Progress</span><span>${ico("reset",16)}</span></button>
   </div>`;
-  openModal("⚙️","Settings","Manage your quests, anchor streak, sound, and save data.",html);
+  openModal(ico("settings",36),"Settings","Manage your quests, anchor streak, sound, and save data.",html);
   document.getElementById("settingsQuestsBtn").onclick=()=>{editingQuestId=null;openQuestsModal();};
   document.getElementById("anchorSelect").onchange=e=>{
     state.anchorQuestId=e.target.value;
@@ -534,10 +552,10 @@ function openQuestsModal(){
   const listHtml=getQuests().map(q=>{
     const isAnchor=q.id===state.anchorQuestId;
     return `<div class="quest-mgr-item">
-      <div><b>${q.icon} ${q.name}</b><small>+${q.xp} XP · ${q.type}${isAnchor?" · 🔒 Anchor":""}</small></div>
+      <div><b>${q.icon} ${q.name}</b><small>+${q.xp} XP · ${q.type}${isAnchor?" · Anchor":""}</small></div>
       <div class="quest-mgr-actions">
-        <button class="icon-mini" data-edit="${q.id}" title="Edit">✏️</button>
-        ${isAnchor?`<span class="icon-mini" title="Anchor quest protected">🔒</span>`:`<button class="icon-mini" data-del="${q.id}" title="Remove">🗑️</button>`}
+        <button class="icon-mini" data-edit="${q.id}" title="Edit">${ico("edit",14)}</button>
+        ${isAnchor?`<span class="icon-mini" title="Anchor quest protected">${ico("lock",14)}</span>`:`<button class="icon-mini" data-del="${q.id}" title="Remove">${ico("trash",14)}</button>`}
       </div>
     </div>`;
   }).join("");
@@ -551,7 +569,7 @@ function openQuestsModal(){
     </form>
     <div class="quest-mgr-list">${listHtml}</div>
   </div>`;
-  openModal("📜","Manage Quests","Add new quests or edit existing ones. Anchor quest cannot be deleted.",html);
+  openModal(ico("list",36),"Manage Quests","Add new quests or edit existing ones. Anchor quest cannot be deleted.",html);
   document.getElementById("questForm").onsubmit=e=>{
     e.preventDefault();
     const icon=(document.getElementById("qfIcon").value||"✨").trim();
