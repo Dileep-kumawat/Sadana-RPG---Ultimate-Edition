@@ -66,10 +66,18 @@ const blankState = () => ({
 });
 let state = load();
 
-function dateKey(d=new Date()){ return d.toISOString().slice(0,10); }
+function effectiveDate(d=new Date()){
+  const x=new Date(d);
+  x.setHours(x.getHours()-2);
+  return x;
+}
+function localDateStr(x){
+  return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`;
+}
+function dateKey(d=new Date()){ return localDateStr(effectiveDate(d)); }
 function weekKey(d=new Date()){
-  const x = new Date(d); const day=(x.getDay()+6)%7; x.setDate(x.getDate()-day);
-  return x.toISOString().slice(0,10);
+  const x=effectiveDate(d); const day=(x.getDay()+6)%7; x.setDate(x.getDate()-day);
+  return localDateStr(x);
 }
 function todayData(){ const k=dateKey(); if(!state.days[k]) state.days[k]={done:[], xp:0}; return state.days[k]; }
 function currentWeekXP(){ return state.days ? Object.entries(state.days).filter(([k])=>k>=weekKey()).reduce((a,[,v])=>a+(v.xp||0),0):0; }
@@ -93,16 +101,18 @@ function computeMaxStreak(days, predicate){
   }
   return best;
 }
+function normalizeState(raw){
+  const s={...blankState(),...(raw||{})};
+  s.unlockedAchievements=Array.isArray(s.unlockedAchievements)?s.unlockedAchievements:[];
+  s.defeatedBosses=s.defeatedBosses&&typeof s.defeatedBosses==="object"?s.defeatedBosses:{};
+  s.maxMantraStreak=Math.max(s.maxMantraStreak||0,s.mantraStreak||0,computeMaxStreak(s.days,d=>(d.done||[]).includes("mantra")));
+  s.maxSadhanaStreak=Math.max(s.maxSadhanaStreak||0,s.sadhanaStreak||0,computeMaxStreak(s.days,d=>(d.xp||0)>=500));
+  return s;
+}
 function save(){ localStorage.setItem(STORAGE,JSON.stringify(state)); }
 function load(){
-  try{
-    const s={...blankState(),...JSON.parse(localStorage.getItem(STORAGE)||"{}")};
-    s.unlockedAchievements=Array.isArray(s.unlockedAchievements)?s.unlockedAchievements:[];
-    s.defeatedBosses=s.defeatedBosses&&typeof s.defeatedBosses==="object"?s.defeatedBosses:{};
-    s.maxMantraStreak=Math.max(s.maxMantraStreak||0,s.mantraStreak||0,computeMaxStreak(s.days,d=>(d.done||[]).includes("mantra")));
-    s.maxSadhanaStreak=Math.max(s.maxSadhanaStreak||0,s.sadhanaStreak||0,computeMaxStreak(s.days,d=>(d.xp||0)>=500));
-    return s;
-  }catch{return blankState()}
+  try{ return normalizeState(JSON.parse(localStorage.getItem(STORAGE)||"{}")); }
+  catch{ return blankState(); }
 }
 
 function levelInfo(xp){
@@ -223,7 +233,21 @@ function renderQuests(done){
 
 function toggleQuest(id){
   const t=todayData(), done=t.done||[], idx=done.indexOf(id);
-  if(idx>=0){ done.splice(idx,1); toast("Quest undone — your earned XP remains safe."); render(); return; }
+  if(idx>=0){
+    const oldXP=t.xp||0;
+    done.splice(idx,1);
+    t.done=done;
+    t.xp=done.reduce((a,x)=>a+(quests.find(q=>q.id===x)?.xp||0),0)+comboBonus(done.length)+sacredBonus(done);
+    const delta=oldXP-t.xp;
+    state.totalXP=Math.max(0,state.totalXP-delta);
+    state.totalCompletions=Math.max(0,state.totalCompletions-1);
+    state.counts[id]=Math.max(0,(state.counts[id]||0)-1);
+    if(id==="mantra") updateMantraStreak(false);
+    updateSadhanaStreak(false);
+    toast(`Quest undone (-${delta} XP). Past days remain safe.`);
+    render();
+    return;
+  }
   const q=quests.find(x=>x.id===id); done.push(id);
   const oldBase=t.xp||0;
   t.done=done; t.xp=done.reduce((a,x)=>a+(quests.find(q=>q.id===x)?.xp||0),0)+comboBonus(done.length)+sacredBonus(done);
@@ -238,26 +262,27 @@ function toggleQuest(id){
   render();
 }
 
-function updateMantraStreak(){
-  const keys=Object.keys(state.days).sort().reverse();
-  let s=0, cursor=new Date();
-  for(const k of keys){
-    const target=dateKey(cursor); if(k!==target) break;
-    if((state.days[k].done||[]).includes("mantra")){s++;cursor.setDate(cursor.getDate()-1)} else break;
+function calcStreak(predicate){
+  const cur=effectiveDate();
+  if(!predicate(state.days[localDateStr(cur)]||{})) cur.setDate(cur.getDate()-1);
+  let s=0;
+  while(predicate(state.days[localDateStr(cur)]||{})){
+    s++;
+    cur.setDate(cur.getDate()-1);
   }
+  return s;
+}
+function updateMantraStreak(awardBonus=true){
+  const s=calcStreak(d=>(d.done||[]).includes("mantra"));
   const prev=state.mantraStreak||0; state.mantraStreak=s;
   state.maxMantraStreak=Math.max(state.maxMantraStreak||0,s);
-  if(s>prev){ const b=streakBonus("mantra",s); if(b){state.totalXP+=b; toast(`🔥 Mantra milestone: +${b.toLocaleString()} XP`);}}
+  if(awardBonus && s>prev){ const b=streakBonus("mantra",s); if(b){state.totalXP+=b; toast(`🔥 Mantra milestone: +${b.toLocaleString()} XP`);}}
 }
-function updateSadhanaStreak(){
-  const keys=Object.keys(state.days).sort().reverse(); let s=0, cursor=new Date();
-  for(const k of keys){
-    const target=dateKey(cursor); if(k!==target) break;
-    if((state.days[k].xp||0)>=500){s++;cursor.setDate(cursor.getDate()-1)} else break;
-  }
+function updateSadhanaStreak(awardBonus=true){
+  const s=calcStreak(d=>(d.xp||0)>=500);
   const prev=state.sadhanaStreak||0; state.sadhanaStreak=s;
   state.maxSadhanaStreak=Math.max(state.maxSadhanaStreak||0,s);
-  if(s>prev){ const b=streakBonus("sadhana",s); if(b){state.totalXP+=b; toast(`🔥 Sadhana streak ${s}: +${b.toLocaleString()} XP`);}}
+  if(awardBonus && s>prev){ const b=streakBonus("sadhana",s); if(b){state.totalXP+=b; toast(`🔥 Sadhana streak ${s}: +${b.toLocaleString()} XP`);}}
 }
 
 function isAchievementUnlocked(a){
@@ -332,10 +357,11 @@ function renderLeaderboard(){
   document.getElementById("weekChange").textContent=(thisWeek-previous>=0?"+":"")+((thisWeek-previous).toLocaleString())+" XP";
 }
 function renderStreak(){
-  const el=document.getElementById("streakTrack"), now=new Date(); now.setDate(now.getDate()-13);
+  const el=document.getElementById("streakTrack"), base=effectiveDate(); base.setDate(base.getDate()-13);
+  const todayK=dateKey();
   el.innerHTML=Array.from({length:14},(_,i)=>{
-    const d=new Date(now);d.setDate(now.getDate()+i);const k=dateKey(d);
-    const active=(state.days[k]?.xp||0)>=500; const today=k===dateKey();
+    const d=new Date(base);d.setDate(base.getDate()+i);const k=localDateStr(d);
+    const active=(state.days[k]?.xp||0)>=500; const today=k===todayK;
     return `<div class="day-dot ${active?"active":""} ${today?"today":""}"><div class="dot"></div><small>${d.toLocaleDateString(undefined,{weekday:"narrow"})}</small></div>`;
   }).join("");
 }
@@ -347,6 +373,44 @@ function closeModal(){document.getElementById("modalBackdrop").classList.remove(
 document.getElementById("modalClose").onclick=closeModal;
 document.getElementById("modalOK").onclick=closeModal;
 document.getElementById("modalBackdrop").addEventListener("click",e=>{if(e.target.id==="modalBackdrop")closeModal()});
+document.getElementById("exportBtn").onclick=()=>{
+  const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download=`sadhana-rpg-backup-${dateKey()}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast("Backup exported!");
+};
+document.getElementById("importBtn").onclick=()=>document.getElementById("importFile").click();
+document.getElementById("importFile").addEventListener("change",e=>{
+  const file=e.target.files?.[0];
+  e.target.value="";
+  if(!file) return;
+  const reader=new FileReader();
+  reader.onload=()=>{
+    try{
+      const parsed=JSON.parse(reader.result);
+      if(!parsed || typeof parsed!=="object" || typeof parsed.days!=="object"){
+        toast("Invalid backup file."); return;
+      }
+      state=normalizeState(parsed);
+      knownAchievements=new Set();
+      achievements.forEach(a=>{
+        if(isAchievementUnlocked(a)){
+          if(!state.unlockedAchievements.includes(a.id)) state.unlockedAchievements.push(a.id);
+          knownAchievements.add(a.id);
+        }
+      });
+      updateMantraStreak(false);
+      updateSadhanaStreak(false);
+      save();
+      render();
+      toast("Backup restored!");
+    }catch{ toast("Could not read backup file."); }
+  };
+  reader.readAsText(file);
+});
 document.getElementById("soundBtn").onclick=()=>{state.sound=!state.sound;document.getElementById("soundBtn").textContent=state.sound?"🔊":"🔇";save();toast(state.sound?"Sounds on":"Sounds off")};
 document.getElementById("resetBtn").onclick=()=>{
   if(confirm("Reset ALL Sadhana RPG progress? This cannot be undone.")){state=blankState();knownAchievements=new Set();save();render();toast("Fresh save created. New adventure begins!")}
@@ -359,6 +423,8 @@ document.getElementById("bossBtn").onclick=()=>{
 };
 document.getElementById("greeting").textContent = `Welcome, Sadhaka.`;
 document.getElementById("soundBtn").textContent=state.sound?"🔊":"🔇";
+updateMantraStreak(false);
+updateSadhanaStreak(false);
 achievements.forEach(a=>{
   if(isAchievementUnlocked(a)){
     if(!state.unlockedAchievements.includes(a.id)) state.unlockedAchievements.push(a.id);
@@ -366,3 +432,4 @@ achievements.forEach(a=>{
   }
 });
 render();
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("./sw.js").catch(()=>{}); }
